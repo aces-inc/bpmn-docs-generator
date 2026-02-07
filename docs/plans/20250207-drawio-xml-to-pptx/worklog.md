@@ -23,3 +23,5 @@
 - **検証**: `drawio_to_pptx` が図形数を返すように変更。CLI の `to-pptx` / `pipeline` で図形数を stderr に表示し、0 件のときは警告を表示。
 - **プレビュー**: README に「出力の確認」を追加（図形数表示・0件警告の説明、および PowerPoint 等で開いてプレビューする手順）。
 - Phase 2 完了: ruff check / pytest 通過、コミット作成。
+- Phase 3: セルフレビュー（軽微: .gitignore 追加で __pycache__ 除外）。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
