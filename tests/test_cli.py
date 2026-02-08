@@ -13,7 +13,7 @@ SAMPLE_XML = """<mxGraphModel><root>
 
 
 def _run(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess:
-    cmd = [sys.executable, "-m", "drawio_to_pptx"] + list(args)
+    cmd = [sys.executable, "-m", "process_to_pptx"] + list(args)
     return subprocess.run(
         cmd,
         input=input_text,
@@ -58,3 +58,32 @@ def test_cli_pipeline(tmp_path: Path) -> None:
     assert r.returncode == 0
     assert out.exists()
     assert out.stat().st_size > 0
+
+
+SAMPLE_YAML = """
+actors:
+  - A
+  - B
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: T1
+    next: [2]
+  - id: 2
+    type: task
+    actor: 1
+    label: T2
+    next: []
+"""
+
+
+def test_cli_from_yaml(tmp_path: Path) -> None:
+    inp = tmp_path / "in.yaml"
+    inp.write_text(SAMPLE_YAML, encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    r = _run("from-yaml", str(inp), "-o", str(out))
+    assert r.returncode == 0
+    assert out.exists()
+    assert out.stat().st_size > 0
+    assert "Shapes:" in r.stderr

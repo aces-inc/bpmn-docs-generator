@@ -1,0 +1,163 @@
+"""YAML 業務プロセス定義から編集可能な PPTX を生成する。"""
+
+from pathlib import Path
+
+from pptx import Presentation
+from pptx.enum.shapes import MSO_CONNECTOR_TYPE, MSO_SHAPE
+from pptx.util import Emu, Pt
+from pptx.dml.color import RGBColor
+from pptx.oxml import parse_xml
+
+from .yaml_loader import (
+    ProcessLayout,
+    load_process_yaml,
+    compute_layout,
+)
+
+
+def _add_arrow_to_connector(connector) -> None:
+    """コネクタの終端に矢印を付ける。"""
+    line_elem = connector.line._get_or_add_ln()
+    line_elem.append(
+        parse_xml(
+            '<a:endLn xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="38100" len="38100"/>'
+        )
+    )
+
+
+def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
+    """スライド左側にアクター名を描画。"""
+    for i, name in enumerate(layout.actors):
+        top = i * layout.lane_height + (layout.lane_height - layout.task_side) // 2
+        # テキストボックス: 左端に配置、幅は left_label_width より少し小さく
+        w = layout.left_label_width - Emu(36000)  # 約 1mm マージン
+        left = Emu(18000)
+        tb = slide.shapes.add_textbox(left, Emu(top), w, Emu(layout.task_side))
+        tf = tb.text_frame
+        tf.clear()
+        p = tf.paragraphs[0]
+        p.text = name
+        p.font.size = Pt(10)
+        p.font.bold = True
+
+
+def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
+    """レーン間をグレーの点線で区切る。"""
+    gray = RGBColor(0x80, 0x80, 0x80)
+    x1 = int(layout.left_label_width)
+    x2 = int(layout.slide_width - layout.right_margin)
+    for i in range(1, len(layout.actors)):
+        y = i * layout.lane_height
+        line = slide.shapes.add_connector(
+            MSO_CONNECTOR_TYPE.STRAIGHT, x1, y, x2, y
+        )
+        line.line.color.rgb = gray
+        line.line.width = Pt(0.5)
+        # 点線: dashType を設定（a:prstDash）
+        ln = line.line._get_or_add_ln()
+        dash = parse_xml(
+            '<a:prstDash xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" val="dot"/>'
+        )
+        ln.append(dash)
+
+
+def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
+    """タスクまたは分岐の図形を 1 つ描画。タスクは正方形の四角、分岐はひし形。"""
+    if node.type == "gateway":
+        shape_type = MSO_SHAPE.DIAMOND
+    else:
+        shape_type = MSO_SHAPE.ROUNDED_RECTANGLE
+    shape = slide.shapes.add_shape(
+        shape_type,
+        Emu(left),
+        Emu(top),
+        Emu(width),
+        Emu(height),
+    )
+    shape.text_frame.clear()
+    p = shape.text_frame.paragraphs[0]
+    p.text = node.label
+    p.font.size = Pt(10)
+    p.font.bold = False
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = RGBColor(0xE8, 0xE8, 0xE8)
+    shape.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
+    return shape
+
+
+def yaml_to_pptx(
+    yaml_path: str | Path,
+    output_path: str | Path,
+) -> int:
+    """
+    YAML ファイルを読み、PPTX レイアウト仕様に従って編集可能な PPTX を生成する。
+    戻り値はスライドに追加した図形の総数（タスク・分岐・矢印・レーン線・ラベル含む）。
+    """
+    actors, nodes = load_process_yaml(yaml_path)
+    if not actors or not nodes:
+        prs = Presentation()
+        prs.slide_width = Emu(9144000)
+        prs.slide_height = Emu(6858000)
+        blank = prs.slide_layouts[6]
+        prs.slides.add_slide(blank)
+        prs.save(str(output_path))
+        return 0
+
+    layout = compute_layout(actors, nodes)
+    prs = Presentation()
+    prs.slide_width = Emu(layout.slide_width)
+    prs.slide_height = Emu(layout.slide_height)
+    blank = prs.slide_layouts[6]
+
+    total_shapes = 0
+
+    for slide_idx in range(layout.num_slides):
+        slide = prs.slides.add_slide(blank)
+        shape_by_id = {}
+
+        # アクター名（左）
+        _draw_actor_labels(slide, layout)
+        total_shapes += len(layout.actors)
+
+        # レーン区切り（グレー点線）
+        _draw_lane_separators(slide, layout)
+        total_shapes += max(0, len(layout.actors) - 1)
+
+        # このスライドに属するノード
+        for node in layout.nodes:
+            if node.slide_index != slide_idx:
+                continue
+            pos = layout.node_positions.get(node.id)
+            if not pos:
+                continue
+            left, top, w, h = pos
+            shp = _draw_node_shape(slide, node, left, top, w, h)
+            shape_by_id[node.id] = shp
+            total_shapes += 1
+
+        # このスライド内のエッジのみ矢印で接続（両端が同じスライド）
+        for from_id, to_id in layout.edges:
+            from_node = next((n for n in layout.nodes if n.id == from_id), None)
+            to_node = next((n for n in layout.nodes if n.id == to_id), None)
+            if not from_node or not to_node:
+                continue
+            if from_node.slide_index != slide_idx or to_node.slide_index != slide_idx:
+                continue
+            from_shp = shape_by_id.get(from_id)
+            to_shp = shape_by_id.get(to_id)
+            if not from_shp or not to_shp:
+                continue
+            # コネクタ: 始点・終点を図形に接続（右→左）。接続点: 0=上, 1=左, 2=下, 3=右
+            conn = slide.shapes.add_connector(
+                MSO_CONNECTOR_TYPE.STRAIGHT, 0, 0, 0, 0
+            )
+            conn.begin_connect(from_shp, 3)
+            conn.end_connect(to_shp, 1)
+            conn.line.fill.solid()
+            conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
+            conn.line.width = Pt(1)
+            _add_arrow_to_connector(conn)
+            total_shapes += 1
+
+    prs.save(str(output_path))
+    return total_shapes

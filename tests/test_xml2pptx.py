@@ -1,8 +1,8 @@
-"""drawio2pptx のテスト。"""
+"""xml2pptx のテスト。"""
 
 from pathlib import Path
 
-from drawio_to_pptx import drawio2pptx
+from process_to_pptx import xml2pptx
 
 
 SAMPLE_XML = """<mxfile host="drawio"><diagram id="page1"><mxGraphModel dx="1422" dy="794" grid="1" gridSize="10"><root>
@@ -14,7 +14,7 @@ SAMPLE_XML = """<mxfile host="drawio"><diagram id="page1"><mxGraphModel dx="1422
 
 
 def test_parse_cells() -> None:
-    cells = drawio2pptx.parse_cells(SAMPLE_XML)
+    cells = xml2pptx.parse_cells(SAMPLE_XML)
     vertex_cells = [c for c in cells if c.vertex and c.geometry]
     assert len(vertex_cells) >= 2
     values = [c.value for c in vertex_cells]
@@ -22,17 +22,17 @@ def test_parse_cells() -> None:
     assert "Box B" in values
 
 
-def test_drawio_to_pptx(tmp_path: Path) -> None:
+def test_xml_to_pptx(tmp_path: Path) -> None:
     out = tmp_path / "out.pptx"
-    drawio2pptx.drawio_to_pptx(SAMPLE_XML, str(out))
+    xml2pptx.xml_to_pptx(SAMPLE_XML, str(out))
     assert out.exists()
     assert out.stat().st_size > 0
 
 
-def test_drawio_file_to_pptx(tmp_path: Path) -> None:
-    drawio_path = tmp_path / "in.drawio"
-    drawio_path.write_text(SAMPLE_XML, encoding="utf-8")
+def test_xml_file_to_pptx(tmp_path: Path) -> None:
+    xml_path = tmp_path / "in.drawio"
+    xml_path.write_text(SAMPLE_XML, encoding="utf-8")
     out = tmp_path / "out.pptx"
-    drawio2pptx.drawio_file_to_pptx(drawio_path, out)
+    xml2pptx.xml_file_to_pptx(xml_path, out)
     assert out.exists()
     assert out.stat().st_size > 0

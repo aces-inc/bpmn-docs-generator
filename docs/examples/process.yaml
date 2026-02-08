@@ -1,0 +1,40 @@
+# 業務プロセス例（YAML スキーマ）
+# 使い方: uv run process-to-pptx from-yaml docs/examples/process.yaml -o output.pptx
+
+actors:
+  - お客様
+  - IT営業
+  - 社内
+  - 導入・サポート
+
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 要件検討
+    next: [2]
+  - id: 2
+    type: gateway
+    actor: 0
+    label: 成約?
+    next: [3, 4]
+  - id: 3
+    type: task
+    actor: 1
+    label: 契約手続き
+    next: [5]
+  - id: 4
+    type: task
+    actor: 0
+    label: 見送り
+    next: []
+  - id: 5
+    type: task
+    actor: 2
+    label: 契約審査
+    next: [6]
+  - id: 6
+    type: task
+    actor: 3
+    label: キックオフ
+    next: []

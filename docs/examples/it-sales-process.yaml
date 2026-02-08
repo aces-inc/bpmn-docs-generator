@@ -1,0 +1,102 @@
+# IT営業業務プロセス（M365・SFA 利用想定）
+# 使い方: uv run process-to-pptx from-yaml docs/examples/it-sales-process.yaml -o output.pptx
+
+actors:
+  - お客様
+  - IT営業
+  - 社内（法務・稟議）
+  - 導入・サポート
+
+nodes:
+  # --- リード獲得・育成 ---
+  - id: 1
+    type: task
+    actor: 1
+    label: リード獲得（SFA登録・マーケ連携）
+    next: [2]
+  - id: 2
+    type: gateway
+    actor: 1
+    label: リード品質OK?
+    next: [3, 4]
+  - id: 3
+    type: task
+    actor: 1
+    label: リード育成（SFAステータス更新・M365で情報共有）
+    next: [5]
+  - id: 4
+    type: task
+    actor: 1
+    label: リード見送り（SFAでクロージング）
+    next: []
+  - id: 5
+    type: task
+    actor: 1
+    label: アウトバウンド・MTG設定（Outlook/Teams予定）
+    next: [6]
+
+  # --- 初回商談 ---
+  - id: 6
+    type: task
+    actor: 0
+    label: 初回商談・ヒアリング（Teams/対面）
+    next: [7]
+  - id: 7
+    type: gateway
+    actor: 0
+    label: 商談化する?
+    next: [8, 4]
+  - id: 8
+    type: task
+    actor: 1
+    label: 要件ヒアリング・デモ（Teams・SFA活動記録）
+    next: [9]
+  - id: 9
+    type: task
+    actor: 1
+    label: 提案・見積作成（SFA案件・見積登録）
+    next: [10]
+  - id: 10
+    type: gateway
+    actor: 1
+    label: 成約見込みあり?
+    next: [11, 4]
+
+  # --- 稟議・契約 ---
+  - id: 11
+    type: task
+    actor: 1
+    label: 稟議依頼（M365/SharePoint・SFA更新）
+    next: [12]
+  - id: 12
+    type: task
+    actor: 2
+    label: 契約審査・稟議（M365承認フロー）
+    next: [13]
+  - id: 13
+    type: gateway
+    actor: 2
+    label: 契約承認?
+    next: [14, 4]
+  - id: 14
+    type: task
+    actor: 2
+    label: 契約締結（M365・契約書管理）
+    next: [15]
+
+  # --- 導入・サポート ---
+  - id: 15
+    type: task
+    actor: 3
+    label: キックオフ（Teams・役割・スケジュール共有）
+    next: [16]
+  - id: 16
+    type: task
+    actor: 3
+    label: 環境準備（M365テナント・ライセンス等）
+    next: [17]
+  - id: 17
+    type: task
+    actor: 3
+    label: 導入・サポート（SFA案件クロージング）
+    next: []

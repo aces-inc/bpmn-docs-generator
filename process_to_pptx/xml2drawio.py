@@ -1,4 +1,4 @@
-"""Drawio互換XMLを .drawio ファイル形式に変換する。"""
+"""mxGraph 互換 XML を .drawio ファイル形式に変換する。"""
 
 
 def _ensure_mxfile_wrapper(xml_content: str) -> str:
@@ -37,7 +37,7 @@ def _extract_between(s: str, start: str, end: str) -> str:
 
 def xml_to_drawio(xml_content: str) -> str:
     """
-    AI等が出力したDrawio互換XMLを、.drawio として保存・開ける形式に変換する。
+    mxGraph 互換 XML を、.drawio として保存・開ける形式に変換する。
     入力は mxGraphModel 全体、または <root> 内の mxCell 断片を想定。
     """
     return _ensure_mxfile_wrapper(xml_content)

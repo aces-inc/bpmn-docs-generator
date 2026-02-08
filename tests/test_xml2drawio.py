@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from drawio_to_pptx import xml2drawio
+from process_to_pptx import xml2drawio
 
 
 def test_mxgraph_model_wrapped_to_mxfile() -> None:

@@ -8,7 +8,7 @@ set -e
 mkdir -p "${GEN_DIR:?}"
 
 converted=0
-for f in "${SRC_DIR}"/*.yaml "${SRC_DIR}"/*.yml 2>/dev/null; do
+for f in "${SRC_DIR}"/*.yaml "${SRC_DIR}"/*.yml; do
   [ -f "$f" ] || continue
   base=$(basename "$f" .yaml)
   base="${base%.yml}"
