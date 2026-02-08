@@ -91,3 +91,6 @@
   - `p.font.color.rgb = RGBColor(0, 0, 0)` で黒文字。
   - 折り返しなし・最小 10pt は既存の word_wrap=False, Pt(10) で充足。
 - Phase 1 完了: 全 DoD 達成。
+- Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
+- Phase 3 完了: セルフレビュー。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
