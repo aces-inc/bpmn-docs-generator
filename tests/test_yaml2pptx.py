@@ -292,3 +292,39 @@ def test_loop_drawn_in_pptx(tmp_path: Path) -> None:
     assert out.exists()
     # アクター1 + ノード3 + エッジ3本(1→2, 2→3, 3→1)
     assert n >= 7, "ループの3本の矢印が描画されている"
+
+
+ARTIFACT_YAML = """
+actors: [A]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 作成
+    next: [2]
+  - id: 2
+    type: artifact
+    actor: 0
+    label: 見積書
+    next: []
+"""
+
+
+def test_artifact_drawn_as_flowchart_data(tmp_path: Path) -> None:
+    """成果物ノードがフローチャートのデータ図形で描画され、中に成果物名がある（DoD: 成果物）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(ARTIFACT_YAML.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    data_shapes = []
+    for s in slide.shapes:
+        try:
+            if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.FLOWCHART_DATA:
+                data_shapes.append(s)
+        except (ValueError, AttributeError):
+            pass
+    assert len(data_shapes) >= 1, "成果物がデータ図形(FLOWCHART_DATA)で描画されている"
+    texts = [s.text_frame.paragraphs[0].text for s in data_shapes if s.text_frame.paragraphs]
+    assert "見積書" in texts, "成果物名が図形内に記載されている"

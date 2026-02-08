@@ -192,3 +192,11 @@
   - スキーマ: docs/yaml-schema.md にループの説明を追記。
   - テスト: test_loop_assigns_columns_and_edge, test_loop_drawn_in_pptx を追加。
 - 品質ゲート: SKIP。ruff / pytest 通過。
+
+## 成果物 DoD（plan-execute 2025-02-09）
+
+- **成果物**: YAML で type: artifact を指定可能に。PPTX ではフローチャートのデータ図形（FLOWCHART_DATA）で描画し、中に成果物名（label）を記載。
+  - yaml_loader: type に "artifact" を許可。
+  - yaml2pptx: artifact のとき MSO_SHAPE.FLOWCHART_DATA で描画、テキストは node.label。
+  - スキーマ・テスト: docs/yaml-schema.md に type: artifact を追記。test_load_accepts_artifact_type, test_artifact_drawn_as_flowchart_data を追加。
+- 品質ゲート: SKIP。ruff / pytest 通過。

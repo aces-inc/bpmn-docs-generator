@@ -148,6 +148,25 @@ nodes:
     assert layout.edge_labels.get((1, 3)) == "No"
 
 
+def test_load_accepts_artifact_type(tmp_path: Path) -> None:
+    """type: artifact を読み込める（DoD: 成果物）。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: artifact
+    actor: 0
+    label: 見積書
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    assert len(nodes) == 1
+    assert nodes[0].type == "artifact"
+    assert nodes[0].label == "見積書"
+
+
 def test_load_accepts_start_end_types(tmp_path: Path) -> None:
     """type: start / type: end を読み込める。"""
     yaml_text = """
