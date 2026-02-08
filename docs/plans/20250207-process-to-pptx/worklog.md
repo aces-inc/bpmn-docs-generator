@@ -113,3 +113,6 @@
 - **スライドに必ず収まる**: 必要高さ＝アクター数×レーン高、必要幅＝列数×(task_side+gap)。利用可能高さ/幅と比較して scale = min(scale_h, scale_w, 1.0) を算出し、lane_height / task_side / gap をスケール。最小 task_side を下回らないよう補正。スケール後に final_max_cols を再計算してスライド・列を再割り当て。
 - テスト: `test_actor_count_scaling`（2 アクター vs 7 アクターでレーン・タスクが少ない方が大きい）、`test_layout_fits_in_slide`（図がスライド内に収まる）を追加。
 - Phase 1 完了: 全 DoD 達成。
+- Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
+- Phase 3 完了: セルフレビュー。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
