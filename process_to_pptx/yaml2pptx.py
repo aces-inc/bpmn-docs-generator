@@ -26,9 +26,11 @@ def _add_arrow_to_connector(connector) -> None:
 
 
 def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
-    """スライド左側にアクター名を描画。"""
+    """スライド左側にアクター名を描画。描画開始は content_top_offset から。"""
     for i, name in enumerate(layout.actors):
-        top = i * layout.lane_height + (layout.lane_height - layout.task_side) // 2
+        top = layout.content_top_offset + i * layout.lane_height + (
+            layout.lane_height - layout.task_side
+        ) // 2
         # テキストボックス: 左端に配置、幅は left_label_width より少し小さく
         w = layout.left_label_width - Emu(36000)  # 約 1mm マージン
         left = Emu(18000)
@@ -47,7 +49,7 @@ def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
     x1 = int(layout.left_label_width)
     x2 = int(layout.slide_width - layout.right_margin)
     for i in range(1, len(layout.actors)):
-        y = i * layout.lane_height
+        y = layout.content_top_offset + i * layout.lane_height
         line = slide.shapes.add_connector(
             MSO_CONNECTOR_TYPE.STRAIGHT, x1, y, x2, y
         )
@@ -89,6 +91,8 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
     shape.fill.solid()
     shape.fill.fore_color.rgb = RGBColor(0xE8, 0xE8, 0xE8)
     shape.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
+    # タスクの四角には影を付けない（DoD）
+    shape.shadow.inherit = False
     return shape
 
 

@@ -39,6 +39,8 @@ class ProcessLayout:
     lane_height: int = int(1.2 * EMU_PER_INCH)
     task_side: int = int(0.4 * EMU_PER_INCH)
     gap: int = 0  # task_side で後から設定
+    # 図の描画開始位置（スライド上端から約25%下がった位置、タイトル・キーメッセージ用領域確保）
+    content_top_offset: int = 0  # compute_layout で設定
 
     actors: list[str] = field(default_factory=list)
     nodes: list[ProcessNode] = field(default_factory=list)
@@ -158,6 +160,7 @@ def compute_layout(
     ノードは YAML の並び順で列に割り当て、max_cols を超えたら次スライド。
     """
     layout = ProcessLayout(actors=actors, nodes=nodes)
+    layout.content_top_offset = int(layout.slide_height * 0.25)
     if max_cols_per_slide is None:
         max_cols_per_slide = layout.max_cols_per_slide
 
@@ -182,7 +185,7 @@ def compute_layout(
         col = node.col_in_slide
 
         left = layout.left_label_width + col * (layout.task_side + layout.gap)
-        top = lane * layout.lane_height + (
+        top = layout.content_top_offset + lane * layout.lane_height + (
             layout.lane_height - layout.task_side
         ) // 2
         layout.node_positions[node.id] = (
