@@ -81,13 +81,18 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
         Emu(width),
         Emu(height),
     )
-    shape.text_frame.clear()
-    shape.text_frame.word_wrap = False  # 明示的改行がない限り1行で表示
-    p = shape.text_frame.paragraphs[0]
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = False  # 明示的改行がない限り1行で表示
+    tf.margin_left = 0
+    tf.margin_top = 0
+    tf.margin_right = 0
+    tf.margin_bottom = 0
+    p = tf.paragraphs[0]
     p.text = node.label
     p.font.size = Pt(10)
     p.font.bold = False
-    p.font.color.rgb = RGBColor(0x25, 0x25, 0x25)  # 視認できる濃いグレー（白でない）
+    p.font.color.rgb = RGBColor(0, 0, 0)  # 黒文字（DoD: タスク文字の配置）
     shape.fill.solid()
     shape.fill.fore_color.rgb = RGBColor(0xE8, 0xE8, 0xE8)
     shape.line.color.rgb = RGBColor(0x37, 0x37, 0x37)

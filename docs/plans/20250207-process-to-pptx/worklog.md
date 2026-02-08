@@ -83,3 +83,11 @@
 - Phase 2: 品質ゲート SKIP（.llm/codex 未使用）。手動で ruff / pytest 通過。コミット作成済み。
 - Phase 3 完了: セルフレビュー。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+
+## タスク文字の配置 DoD（plan-execute 2025-02-08）
+
+- **タスク文字の配置**: タスクは既に `add_shape()` の `text_frame` で図形内にテキストを配置済み。DoD の「余白なし」「黒文字」を明示的に対応。
+  - `text_frame.margin_left/top/right/bottom = 0` で余白なし。
+  - `p.font.color.rgb = RGBColor(0, 0, 0)` で黒文字。
+  - 折り返しなし・最小 10pt は既存の word_wrap=False, Pt(10) で充足。
+- Phase 1 完了: 全 DoD 達成。
