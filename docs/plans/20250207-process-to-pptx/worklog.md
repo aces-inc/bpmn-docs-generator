@@ -80,4 +80,6 @@
 - **タスクの影**: `_draw_node_shape` で `shape.shadow.inherit = False` を設定し、タスクの四角に影を付けない。
 - **レイアウト / 矢印 / 矢印の形状**: 既存実装で充足のため plan.md の該当 DoD を [x] に更新。
 - Phase 1 完了: 全 DoD 達成。
-- Phase 2: 品質ゲート SKIP（.llm/codex 未使用）。手動で ruff / pytest 通過。
+- Phase 2: 品質ゲート SKIP（.llm/codex 未使用）。手動で ruff / pytest 通過。コミット作成済み。
+- Phase 3 完了: セルフレビュー。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
