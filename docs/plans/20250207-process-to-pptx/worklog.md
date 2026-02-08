@@ -48,3 +48,8 @@
 - Phase 2 完了: 品質ゲートは llm/codex 未使用のためスキップ。ruff / pytest 手動実行で通過。コミット作成済み。
 - Phase 3 完了: Codex 未使用のためセルフレビューのみ。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+
+## plan-execute 2025-02-08（品質ゲート SKIP）
+
+- Phase 1: 実装は作業ツリーにあり DoD 達成済み。drawio_to_pptx 削除・process_to_pptx 追加・YAML 対応をステージング。
+- Phase 2 完了: 品質ゲートは .llm/configs 未設定のため SKIP。`uv run ruff check .` / `uv run pytest` 手動実行で全通過。実装コミット済み (feat: YAML 駆動の業務プロセス図 → 編集可能 PPTX)。
