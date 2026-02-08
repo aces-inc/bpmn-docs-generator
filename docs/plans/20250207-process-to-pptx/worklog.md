@@ -61,3 +61,12 @@
 - Phase 2 完了: 品質ゲート SKIP。ruff / pytest 手動実行で通過。コミット作成済み。
 - Phase 3 完了: セルフレビュー。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+
+## 矢印・タスク表示 DoD 対応（plan-execute 2025-02-08）
+
+- **矢印の形状**: 既存の `_add_arrow_to_connector` で終端に triangle 矢印を付与済み。変更なし。
+- **矢印の接続点**: 接続点を定数化（CONNECTION_SITE_RIGHT=3, LEFT=1）。タスクの右辺中央→左辺中央（上下中央）に結合。
+- **矢印の種類**: 同一レーン（actor_index 一致）は `MSO_CONNECTOR_TYPE.STRAIGHT`、異なるレーンは `MSO_CONNECTOR_TYPE.ELBOW` で描画。
+- **タスク文字の折り返し**: `text_frame.word_wrap = False` を設定。明示的改行以外は 1 行表示。
+- **タスク文字色**: `p.font.color.rgb = RGBColor(0x25, 0x25, 0x25)` で視認可能な濃いグレーに設定。
+- Phase 1 完了: 全 DoD 達成（矢印・タスク表示 5 項目対応済み）。

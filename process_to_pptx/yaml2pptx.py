@@ -61,6 +61,11 @@ def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
         ln.append(dash)
 
 
+# 四角形の接続点: 0=上, 1=左, 2=下, 3=右（各辺の中央＝上下中央）
+CONNECTION_SITE_RIGHT = 3
+CONNECTION_SITE_LEFT = 1
+
+
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
     """タスクまたは分岐の図形を 1 つ描画。タスクは正方形の四角、分岐はひし形。"""
     if node.type == "gateway":
@@ -75,10 +80,12 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
         Emu(height),
     )
     shape.text_frame.clear()
+    shape.text_frame.word_wrap = False  # 明示的改行がない限り1行で表示
     p = shape.text_frame.paragraphs[0]
     p.text = node.label
     p.font.size = Pt(10)
     p.font.bold = False
+    p.font.color.rgb = RGBColor(0x25, 0x25, 0x25)  # 視認できる濃いグレー（白でない）
     shape.fill.solid()
     shape.fill.fore_color.rgb = RGBColor(0xE8, 0xE8, 0xE8)
     shape.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
@@ -147,12 +154,19 @@ def yaml_to_pptx(
             to_shp = shape_by_id.get(to_id)
             if not from_shp or not to_shp:
                 continue
-            # コネクタ: 始点・終点を図形に接続（右→左）。接続点: 0=上, 1=左, 2=下, 3=右
-            conn = slide.shapes.add_connector(
-                MSO_CONNECTOR_TYPE.STRAIGHT, 0, 0, 0, 0
+            # 同一レーン内は直線、異なるレーン間は折れ曲がり（直角コネクタ）
+            same_lane = from_node.actor_index == to_node.actor_index
+            connector_type = (
+                MSO_CONNECTOR_TYPE.STRAIGHT
+                if same_lane
+                else MSO_CONNECTOR_TYPE.ELBOW
             )
-            conn.begin_connect(from_shp, 3)
-            conn.end_connect(to_shp, 1)
+            conn = slide.shapes.add_connector(
+                connector_type, 0, 0, 0, 0
+            )
+            # 接続点: タスクの上下中央（右辺中央→左辺中央）
+            conn.begin_connect(from_shp, CONNECTION_SITE_RIGHT)
+            conn.end_connect(to_shp, CONNECTION_SITE_LEFT)
             conn.line.fill.solid()
             conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
             conn.line.width = Pt(1)
