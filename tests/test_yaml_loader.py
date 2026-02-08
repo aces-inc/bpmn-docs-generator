@@ -6,6 +6,7 @@ from process_to_pptx.yaml_loader import (
     ProcessNode,
     load_process_yaml,
     compute_layout,
+    SLIDE_MARGIN_MIN_EMU,
 )
 
 
@@ -122,6 +123,19 @@ def test_compute_layout(tmp_path: Path) -> None:
     for nid, (left, top, w, h) in layout.node_positions.items():
         assert w == layout.task_side
         assert h == layout.task_side
+
+
+def test_slide_margin_10pt(tmp_path: Path) -> None:
+    """スライド左右に 10pt 以上余白がとられる（DoD）。"""
+    p = tmp_path / "process.yaml"
+    p.write_text(SAMPLE_YAML, encoding="utf-8")
+    actors, nodes = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    assert layout.left_margin >= SLIDE_MARGIN_MIN_EMU
+    assert layout.right_margin >= SLIDE_MARGIN_MIN_EMU
+    for nid, (left, top, w, h) in layout.node_positions.items():
+        assert left >= layout.left_margin
+        assert left + w <= layout.slide_width - layout.right_margin
 
 
 def test_actor_count_scaling() -> None:

@@ -145,3 +145,9 @@
   - yaml2pptx: gateway 描画時にテキストを "✕"（exclusive）または "＋"（parallel）に設定。
   - スキーマ・テスト（test_load_gateway_type, test_gateway_drawn_with_x_or_plus）追加。
 - 品質ゲート: SKIP。ruff / pytest 通過。コミット済み。
+
+## スライド左右10pt余白 DoD（plan-execute 2025-02-09、3件目）
+
+- **スライド左右10pt余白**: left_margin / right_margin を 10pt（SLIDE_MARGIN_MIN_EMU）以上に。ノード・アクター名・点線の X を left_margin 分オフセットし、content_width から左余白を減算。
+- テスト: test_slide_margin_10pt で余白とノード範囲を検証。
+- 品質ゲート: SKIP。ruff / pytest 通過。

@@ -11,9 +11,13 @@ import yaml
 
 # 1 inch = 914400 EMU（python-pptx の標準）
 EMU_PER_INCH = 914400
+# 1 pt = 1/72 inch
+EMU_PER_PT = EMU_PER_INCH // 72
 
 # 最小フォント 10pt を維持するための最小タスク一辺（約 0.25 inch）
 MIN_TASK_SIDE_EMU = int(0.25 * EMU_PER_INCH)
+# スライド左右余白の最小（DoD: 10pt 以上）
+SLIDE_MARGIN_MIN_EMU = 10 * EMU_PER_PT
 
 
 @dataclass
@@ -40,9 +44,11 @@ class ProcessLayout:
     # 定数（EMU）
     slide_width: int = 10 * EMU_PER_INCH
     slide_height: int = int(7.5 * EMU_PER_INCH)
+    # スライド左右 10pt 以上余白（DoD）
+    left_margin: int = SLIDE_MARGIN_MIN_EMU
+    right_margin: int = max(int(0.5 * EMU_PER_INCH), SLIDE_MARGIN_MIN_EMU)
     # 左余白を抑え、アクター名とタスク領域が一体になる幅（DoD: 左端開始位置）
     left_label_width: int = int(1.2 * EMU_PER_INCH)
-    right_margin: int = int(0.5 * EMU_PER_INCH)
     lane_height: int = int(1.2 * EMU_PER_INCH)
     task_side: int = int(0.4 * EMU_PER_INCH)
     gap: int = 0  # task_side で後から設定
@@ -64,7 +70,7 @@ class ProcessLayout:
 
     @property
     def content_width(self) -> int:
-        return self.slide_width - self.left_label_width - self.right_margin
+        return self.slide_width - self.left_margin - self.left_label_width - self.right_margin
 
     @property
     def max_cols_per_slide(self) -> int:
@@ -292,7 +298,7 @@ def compute_layout(
         lane = node.actor_index
         col = node.col_in_slide
 
-        left = layout.left_label_width + col * (layout.task_side + layout.gap)
+        left = layout.left_margin + layout.left_label_width + col * (layout.task_side + layout.gap)
         top = layout.content_top_offset + lane * layout.lane_height + (
             layout.lane_height - layout.task_side
         ) // 2
@@ -318,7 +324,7 @@ def compute_layout(
         n = len(group)
         row_height = zone_height // n
         remainder = zone_height % n
-        left = layout.left_label_width + col * (layout.task_side + layout.gap)
+        left = layout.left_margin + layout.left_label_width + col * (layout.task_side + layout.gap)
         # 列幅は1タスク時と同じ（task_side）。高さのみ分割。
         width = layout.task_side
         offset = 0

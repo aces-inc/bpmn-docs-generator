@@ -31,10 +31,10 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
         top = layout.content_top_offset + i * layout.lane_height + (
             layout.lane_height - layout.task_side
         ) // 2
-        # テキストボックス: 左端に配置、幅は left_label_width より少し小さく
-        w = layout.left_label_width - Emu(36000)  # 約 1mm マージン
-        left = Emu(18000)
-        tb = slide.shapes.add_textbox(left, Emu(top), w, Emu(layout.task_side))
+        # テキストボックス: 左余白の内側に配置、幅は left_label_width より少し小さく
+        w = layout.left_label_width - 36000  # 約 1mm マージン（EMU）
+        left = layout.left_margin + 18000
+        tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(w), Emu(layout.task_side))
         tf = tb.text_frame
         tf.clear()
         p = tf.paragraphs[0]
@@ -44,9 +44,9 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
 
 
 def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
-    """レーン間をグレーの点線で区切る。点線はレーンの左端（アクター名がある左端）まで届く（DoD）。"""
+    """レーン間をグレーの点線で区切る。点線はレーンの左端まで届く。左右は 10pt 余白内（DoD）。"""
     gray = RGBColor(0x80, 0x80, 0x80)
-    x1 = 0  # レーン左端まで届かせる
+    x1 = layout.left_margin  # スライド左端から 10pt 余白の内側
     x2 = int(layout.slide_width - layout.right_margin)
     for i in range(1, len(layout.actors)):
         y = layout.content_top_offset + i * layout.lane_height
