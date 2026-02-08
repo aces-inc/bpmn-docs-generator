@@ -58,3 +58,6 @@
   - `README.md`: 記載を input/output に変更。
   - `input/`, `output/` を .gitkeep で作成。`src/`, `gen/` を削除。
 - Phase 1 完了: 全 DoD 達成（入出力ディレクトリ名 input/output 対応済み）。
+- Phase 2 完了: 品質ゲート SKIP。ruff / pytest 手動実行で通過。コミット作成済み。
+- Phase 3 完了: セルフレビュー。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
