@@ -8,3 +8,4 @@ __pycache__/
 input.xml
 output.drawio
 output.pptx
+gen/*.pptx

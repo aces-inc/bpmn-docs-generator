@@ -1,0 +1,14 @@
+# YAML → PPTX 変換（Docker 利用者向け）
+# 使い方: src/ に YAML を置き、docker compose run convert で gen/ に PPTX が出力される
+# 必要に応じてサービスを増やしたり並列実行用の profile を追加可能
+
+services:
+  convert:
+    build: .
+    image: process-to-pptx:latest
+    volumes:
+      - ./src:/src   # 変換前のファイル（YAML 等）を置く
+      - ./gen:/gen   # 変換後のファイル（PPTX 等）が出力される
+    environment:
+      - SRC_DIR=/src
+      - GEN_DIR=/gen

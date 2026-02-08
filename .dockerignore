@@ -1,0 +1,21 @@
+# Git / IDE
+.git
+.gitignore
+.cursor
+.DS_Store
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.egg-info
+
+# Local / generated（イメージに含めない）
+input.xml
+output.drawio
+output.pptx
+*.pptx
+diagram.drawio
+
+# Docs / 開発用（イメージサイズ削減のため任意で除外）
+docs/plans
