@@ -161,3 +161,10 @@
   - スキーマ・テスト: test_load_next_with_labels, test_compute_layout_edge_labels, test_branch_arrow_labels_drawn を追加。docs/yaml-schema.md に next のオブジェクト形式を追記。
 - 品質ゲート: SKIP。ruff / pytest 手動実行で通過。
 - 実装・テスト・確認・コミットを 1 件ずつ実施。
+
+## アクター名の位置 DoD（plan-execute 2025-02-09）
+
+- **アクター名の位置**: アクター名をスイムレーンの上下中央に配置。
+  - `_draw_actor_labels`: 各レーンの中央 Y を `lane_center_y = lane_top + lane_height // 2` で算出し、ボックス高さの半分だけ上にずらして `top = lane_center_y - box_height // 2` で配置。テキストは `vertical_anchor = MSO_ANCHOR.MIDDLE` と `p.alignment = PP_ALIGN.CENTER` でボックス内中央に。
+  - テスト: `test_actor_labels_vertically_centered_in_lane` でレーン中央とシェイプ中央の一致を検証。
+- 品質ゲート: SKIP。ruff / pytest 通過。

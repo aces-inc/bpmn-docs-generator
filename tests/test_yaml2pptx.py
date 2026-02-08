@@ -6,6 +6,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx import Presentation
 
 from process_to_pptx import yaml2pptx
+from process_to_pptx.yaml_loader import load_process_yaml, compute_layout
 
 
 SAMPLE_YAML = """
@@ -188,3 +189,37 @@ def test_branch_arrow_labels_drawn(tmp_path: Path) -> None:
     )
     assert "Yes" in all_text, "分岐矢印ラベル Yes がスライドに含まれる"
     assert "No" in all_text, "分岐矢印ラベル No がスライドに含まれる"
+
+
+def test_actor_labels_vertically_centered_in_lane(tmp_path: Path) -> None:
+    """アクター名がスイムレーンの上下中央に配置されている（DoD: アクター名の位置）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    actors, nodes = load_process_yaml(yaml_path)
+    layout = compute_layout(actors, nodes)
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    # アクター名のテキストボックスを名前で収集（左側のテキスト＝アクターラベル）
+    actor_texts = ["A", "B"]
+    for i, name in enumerate(actor_texts):
+        lane_center_y = (
+            layout.content_top_offset + i * layout.lane_height + layout.lane_height // 2
+        )
+        found = False
+        for s in slide.shapes:
+            if not hasattr(s, "text_frame") or not s.text_frame.paragraphs:
+                continue
+            if s.text_frame.paragraphs[0].text.strip() != name:
+                continue
+            # このシェイプの縦中央がレーン中央に近いこと（許容 10%）
+            shape_center_y = int(s.top) + int(s.height) // 2
+            tolerance = layout.lane_height // 5
+            assert abs(shape_center_y - lane_center_y) <= tolerance, (
+                f"アクター {name} のラベルがレーン上下中央にない: "
+                f"shape_center={shape_center_y} lane_center={lane_center_y}"
+            )
+            found = True
+            break
+        assert found, f"アクター名 {name} のテキストボックスが見つからない"

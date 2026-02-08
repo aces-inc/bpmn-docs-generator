@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_CONNECTOR_TYPE, MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Pt
 from pptx.dml.color import RGBColor
 from pptx.oxml import parse_xml
@@ -27,21 +27,26 @@ def _add_arrow_to_connector(connector) -> None:
 
 
 def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
-    """スライド左側にアクター名を描画。描画開始は content_top_offset から。"""
+    """スライド左側にアクター名を描画。DoD: アクター名はスイムレーンの上下中央に配置。"""
     for i, name in enumerate(layout.actors):
-        top = layout.content_top_offset + i * layout.lane_height + (
-            layout.lane_height - layout.task_side
-        ) // 2
-        # テキストボックス: 左余白の内側に配置、幅は left_label_width より少し小さく
+        # スイムレーンの上下中央にボックスを配置
+        lane_top = layout.content_top_offset + i * layout.lane_height
+        lane_center_y = lane_top + layout.lane_height // 2
+        box_height = layout.task_side  # 高さはタスク一辺と揃える
+        top = lane_center_y - box_height // 2
+        # テキストボックス: 左余白の内側、幅は left_label_width に収める
         w = layout.left_label_width - 36000  # 約 1mm マージン（EMU）
         left = layout.left_margin + 18000
-        tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(w), Emu(layout.task_side))
+        tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(w), Emu(box_height))
         tf = tb.text_frame
         tf.clear()
         p = tf.paragraphs[0]
         p.text = name
         p.font.size = Pt(10)
         p.font.bold = True
+        # テキストをボックス内で上下中央・左右中央に（DoD: アクター名の位置）
+        p.alignment = PP_ALIGN.CENTER
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
 
 
 def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
