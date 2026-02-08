@@ -8,6 +8,7 @@ from . import __version__
 from . import xml2pptx
 from . import xml2drawio
 from . import yaml2pptx
+from .yaml_loader import load_process_yaml, validate_no_isolated_human_tasks
 
 
 def _report_pptx_shapes(n: int, output_path: str) -> None:
@@ -57,6 +58,11 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "from-yaml":
+        actors, nodes = load_process_yaml(args.input)
+        if actors and nodes:
+            issues = validate_no_isolated_human_tasks(actors, nodes)
+            for msg in issues:
+                print(f"Validation: {msg}", file=sys.stderr)
         n = yaml2pptx.yaml_to_pptx(args.input, args.output)
         print(f"Saved: {args.output}")
         _report_pptx_shapes(n, args.output)

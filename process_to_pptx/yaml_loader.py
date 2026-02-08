@@ -196,6 +196,40 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
     return actors, nodes
 
 
+def validate_no_isolated_human_tasks(
+    actors: list[str], nodes: list[ProcessNode]
+) -> list[str]:
+    """
+    人に属するタスクに孤立がないか検証する（DoD: 人のタスクの接続）。
+    孤立 = タスクなのに next が空（かつ type が end でない）、または
+    誰からも next で参照されていない（かつ type が start でない）。
+    戻り値: 検出した問題のメッセージリスト（0件ならOK）。
+    """
+    id_to_node = {n.id: n for n in nodes}
+    in_degree: dict[str | int, int] = {n.id: 0 for n in nodes}
+    for node in nodes:
+        for to_id in node.next_ids:
+            if to_id in id_to_node:
+                in_degree[to_id] = in_degree.get(to_id, 0) + 1
+
+    issues: list[str] = []
+    for node in nodes:
+        if node.type != "task":
+            continue
+        actor_name = actors[node.actor_index] if node.actor_index < len(actors) else str(node.actor_index)
+        # タスクで next が空なら「行き先のない孤立」
+        if not node.next_ids:
+            issues.append(
+                f"孤立したタスク: id={node.id} (actor={actor_name}) に接続先(next)がありません。"
+            )
+        # 誰からも参照されていないタスクは「入り口のない孤立」（start は type が start なので対象外）
+        if in_degree.get(node.id, 0) == 0:
+            issues.append(
+                f"孤立したタスク: id={node.id} (actor={actor_name}) へ接続する矢印がありません。"
+            )
+    return issues
+
+
 def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
     """
     フロー順で列番号を付与。分岐発生時は「分岐前の列＋分岐先用の1列」とし、

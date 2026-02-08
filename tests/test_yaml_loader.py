@@ -6,6 +6,7 @@ from process_to_pptx.yaml_loader import (
     ProcessNode,
     load_process_yaml,
     compute_layout,
+    validate_no_isolated_human_tasks,
     SLIDE_MARGIN_MIN_EMU,
 )
 
@@ -235,3 +236,29 @@ def test_layout_fits_in_slide(tmp_path: Path) -> None:
         assert left >= 0 and top >= 0, f"ノード {nid} が左上にはみ出す"
         assert left + w <= layout.slide_width, f"ノード {nid} が右にはみ出す"
         assert top + h <= layout.slide_height, f"ノード {nid} が下にはみ出す"
+
+
+def test_validate_no_isolated_human_tasks_ok() -> None:
+    """接続されたフローでは孤立タスク検証で問題なし（DoD: 人のタスクの接続）。"""
+    actors = ["A", "B"]
+    nodes = [
+        ProcessNode(1, "start", 0, "開始", [2]),
+        ProcessNode(2, "task", 0, "T1", [3]),
+        ProcessNode(3, "task", 1, "T2", [4]),
+        ProcessNode(4, "end", 1, "終了", []),
+    ]
+    issues = validate_no_isolated_human_tasks(actors, nodes)
+    assert issues == [], "start→task→task→end は孤立なし"
+
+
+def test_validate_no_isolated_human_tasks_reports_isolated() -> None:
+    """接続先のないタスクや入ってこないタスクを検出する。"""
+    actors = ["A"]
+    nodes = [
+        ProcessNode(1, "task", 0, "T1", []),  # next が空 → 検出
+        ProcessNode(2, "task", 0, "T2", []),  # 誰からも参照されない → 検出
+    ]
+    issues = validate_no_isolated_human_tasks(actors, nodes)
+    assert len(issues) >= 1
+    assert "接続先(next)がありません" in " ".join(issues)
+    assert "接続する矢印がありません" in " ".join(issues)

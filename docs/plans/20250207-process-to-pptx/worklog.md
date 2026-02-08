@@ -175,3 +175,11 @@
   - `_draw_actor_labels`: テキストボックスではなく `add_shape(MSO_SHAPE.ROUNDED_RECTANGLE)` で長方形を描画。top = lane_top + 2pt, height = lane_height - 4pt, left = left_margin + 2pt, width = left_label_width - 4pt。テキストは上下中央・左右中央のまま。
   - テスト: `test_actor_labels_in_box_2pt_from_dotted_line` でボックス上端・高さが 2pt 仕様であることを検証。
 - 品質ゲート: SKIP。ruff / pytest 通過。
+
+## 人のタスクの接続 DoD（plan-execute 2025-02-09）
+
+- **人のタスクの接続**: 孤立した人のタスクを検出する検証を追加（YAML 検証で確認可能）。
+  - `yaml_loader.validate_no_isolated_human_tasks(actors, nodes)`: タスクで next が空のもの・誰からも next で参照されていないタスクを検出し、メッセージリストで返す。start/end は対象外。
+  - CLI `from-yaml` 実行時に検証を実行し、問題があれば stderr に出力。
+  - テスト: `test_validate_no_isolated_human_tasks_ok`, `test_validate_no_isolated_human_tasks_reports_isolated` を追加。
+- 品質ゲート: SKIP。ruff / pytest 通過。
