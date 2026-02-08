@@ -29,6 +29,8 @@ class ProcessNode:
     actor_index: int
     label: str
     next_ids: list[str | int]
+    # 分岐矢印のラベル: to_id -> 表示テキスト（next が { id, label } 形式のとき）
+    next_labels: dict[str | int, str] = field(default_factory=dict)
     # gateway のときのみ: "exclusive"（条件分岐・菱形に✕）| "parallel"（並行・菱形に＋）
     gateway_type: str = "exclusive"
     # レイアウト後に設定
@@ -62,6 +64,8 @@ class ProcessLayout:
         default_factory=dict
     )  # id -> (left_emu, top_emu, width_emu, height_emu)
     edges: list[tuple[str | int, str | int]] = field(default_factory=list)  # (from_id, to_id)
+    # 分岐矢印のラベル: (from_id, to_id) -> 表示テキスト
+    edge_labels: dict[tuple[str | int, str | int], str] = field(default_factory=dict)
     num_slides: int = 1
 
     def __post_init__(self) -> None:
@@ -155,12 +159,22 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
         actor_index = _resolve_actor_index(actor, actors)
         label = str(item.get("label") or "")
         next_raw = item.get("next")
+        next_ids: list[str | int] = []
+        next_labels: dict[str | int, str] = {}
         if isinstance(next_raw, list):
-            next_ids = [_normalize_id(x) for x in next_raw]
+            for x in next_raw:
+                if isinstance(x, dict):
+                    to_id_raw = x.get("id")
+                    if to_id_raw is not None:
+                        to_id = _normalize_id(to_id_raw)
+                        next_ids.append(to_id)
+                        lb = x.get("label")
+                        if lb is not None and str(lb).strip():
+                            next_labels[to_id] = str(lb).strip()
+                else:
+                    next_ids.append(_normalize_id(x))
         elif next_raw is not None:
             next_ids = [_normalize_id(next_raw)]
-        else:
-            next_ids = []
 
         gateway_type = "exclusive"
         if typ == "gateway":
@@ -174,6 +188,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
                 actor_index=actor_index,
                 label=label,
                 next_ids=next_ids,
+                next_labels=next_labels,
                 gateway_type=gateway_type,
             )
         )
@@ -287,11 +302,14 @@ def compute_layout(
 
     layout.num_slides = max((n.slide_index for n in nodes), default=0) + 1
 
-    # エッジ収集（next から）
+    # エッジ収集（next から）と分岐矢印ラベル
     for node in nodes:
         for to_id in node.next_ids:
             if to_id in id_to_node:
                 layout.edges.append((node.id, to_id))
+                lbl = node.next_labels.get(to_id)
+                if lbl:
+                    layout.edge_labels[(node.id, to_id)] = lbl
 
     # 各ノードの (left, top, width, height) を EMU で計算（スライド内の座標）
     for node in nodes:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_CONNECTOR_TYPE, MSO_SHAPE
+from pptx.enum.text import PP_ALIGN
 from pptx.util import Emu, Pt
 from pptx.dml.color import RGBColor
 from pptx.oxml import parse_xml
@@ -195,6 +196,27 @@ def yaml_to_pptx(
             conn.line.width = Pt(1)
             _add_arrow_to_connector(conn)
             total_shapes += 1
+
+            # 分岐矢印のラベル（Yes/No 等）を矢印の近くに表示
+            edge_label = layout.edge_labels.get((from_id, to_id))
+            if edge_label:
+                # 矢印の中点付近に小さなテキストボックスを配置
+                mx = (from_shp.left + from_shp.width + to_shp.left) // 2
+                my = (from_shp.top + from_shp.height // 2 + to_shp.top + to_shp.height // 2) // 2
+                label_w = 72000  # 約 2mm
+                label_h = 18000  # 約 0.5mm
+                left = mx - label_w // 2
+                top = my - label_h - 8000  # 矢印の上側に少しオフセット
+                tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(label_w), Emu(label_h))
+                tf = tb.text_frame
+                tf.clear()
+                tf.word_wrap = False
+                p = tf.paragraphs[0]
+                p.text = edge_label
+                p.font.size = Pt(8)
+                p.font.color.rgb = RGBColor(0x37, 0x37, 0x37)
+                p.alignment = PP_ALIGN.CENTER
+                total_shapes += 1
 
     prs.save(str(output_path))
     return total_shapes

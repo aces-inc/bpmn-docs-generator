@@ -82,6 +82,71 @@ nodes:
     assert nodes2[0].gateway_type == "exclusive"
 
 
+def test_load_next_with_labels(tmp_path: Path) -> None:
+    """next を [{ id, label }, ...] 形式で読み込むと next_ids と next_labels が設定される。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: gateway
+    actor: 0
+    label: 分岐?
+    next:
+      - id: 2
+        label: "Yes"
+      - id: 3
+        label: "No"
+  - id: 2
+    type: task
+    actor: 0
+    label: T2
+    next: []
+  - id: 3
+    type: task
+    actor: 0
+    label: T3
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    gw = nodes[0]
+    assert gw.next_ids == [2, 3]
+    assert gw.next_labels == {2: "Yes", 3: "No"}
+    # 従来のスカラー形式もそのまま
+    assert nodes[1].next_ids == []
+    assert nodes[1].next_labels == {}
+
+
+def test_compute_layout_edge_labels(tmp_path: Path) -> None:
+    """分岐の next_labels から layout.edge_labels が埋まる。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: gateway
+    actor: 0
+    label: "?"
+    next: [{ id: 2, label: "Yes" }, { id: 3, label: "No" }]
+  - id: 2
+    type: task
+    actor: 0
+    label: T2
+    next: []
+  - id: 3
+    type: task
+    actor: 0
+    label: T3
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    actors, nodes = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    assert layout.edge_labels.get((1, 2)) == "Yes"
+    assert layout.edge_labels.get((1, 3)) == "No"
+
+
 def test_load_accepts_start_end_types(tmp_path: Path) -> None:
     """type: start / type: end を読み込める。"""
     yaml_text = """

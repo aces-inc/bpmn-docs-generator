@@ -151,3 +151,13 @@
 - **スライド左右10pt余白**: left_margin / right_margin を 10pt（SLIDE_MARGIN_MIN_EMU）以上に。ノード・アクター名・点線の X を left_margin 分オフセットし、content_width から左余白を減算。
 - テスト: test_slide_margin_10pt で余白とノード範囲を検証。
 - 品質ゲート: SKIP。ruff / pytest 通過。
+
+## 分岐矢印のラベル DoD（plan-execute 2025-02-09、4件目）
+
+- **分岐矢印のラベル**: 分岐した矢印に説明テキスト（Yes/No 等）を表示可能に。
+  - YAML: `next` を `[{ id: 2, label: "Yes" }, { id: 3, label: "No" }]` 形式で指定可能。従来の `[2, 3]` もそのまま利用可能。
+  - `yaml_loader`: ProcessNode に `next_labels`、ProcessLayout に `edge_labels` を追加。load 時に dict 要素から id/label を抽出。
+  - `yaml2pptx`: 矢印描画後、`edge_labels` にラベルがあれば矢印の中点付近に小さいテキストボックスで表示（フォント 8pt、中央揃え）。
+  - スキーマ・テスト: test_load_next_with_labels, test_compute_layout_edge_labels, test_branch_arrow_labels_drawn を追加。docs/yaml-schema.md に next のオブジェクト形式を追記。
+- 品質ゲート: SKIP。ruff / pytest 手動実行で通過。
+- 実装・テスト・確認・コミットを 1 件ずつ実施。

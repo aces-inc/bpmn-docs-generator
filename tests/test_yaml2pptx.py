@@ -143,3 +143,48 @@ def test_gateway_drawn_with_x_or_plus(tmp_path: Path) -> None:
             pass
     assert "✕" in diamond_texts, "条件分岐（exclusive）は菱形に✕"
     assert "＋" in diamond_texts, "並行分岐（parallel）は菱形に＋"
+
+
+SAMPLE_YAML_BRANCH_LABELS = """
+actors:
+  - A
+nodes:
+  - id: 1
+    type: gateway
+    actor: 0
+    label: 成約?
+    next:
+      - id: 2
+        label: "Yes"
+      - id: 3
+        label: "No"
+  - id: 2
+    type: task
+    actor: 0
+    label: 契約
+    next: []
+  - id: 3
+    type: task
+    actor: 0
+    label: 見送り
+    next: []
+"""
+
+
+def test_branch_arrow_labels_drawn(tmp_path: Path) -> None:
+    """分岐矢印にラベル（Yes/No 等）が表示される（DoD）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML_BRANCH_LABELS.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    n = yaml2pptx.yaml_to_pptx(yaml_path, out)
+    assert out.exists()
+    assert n > 0
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    all_text = " ".join(
+        s.text_frame.paragraphs[0].text
+        for s in slide.shapes
+        if hasattr(s, "text_frame") and s.text_frame.paragraphs
+    )
+    assert "Yes" in all_text, "分岐矢印ラベル Yes がスライドに含まれる"
+    assert "No" in all_text, "分岐矢印ラベル No がスライドに含まれる"
