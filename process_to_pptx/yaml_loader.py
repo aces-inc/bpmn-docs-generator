@@ -12,6 +12,9 @@ import yaml
 # 1 inch = 914400 EMU（python-pptx の標準）
 EMU_PER_INCH = 914400
 
+# 最小フォント 10pt を維持するための最小タスク一辺（約 0.25 inch）
+MIN_TASK_SIDE_EMU = int(0.25 * EMU_PER_INCH)
+
 
 @dataclass
 class ProcessNode:
@@ -65,6 +68,27 @@ class ProcessLayout:
         """1 スライドに並べられる最大タスク列数。"""
         unit = self.task_side + self.gap
         return max(1, self.content_width // unit)
+
+
+def _base_sizes_for_actors(num_actors: int) -> tuple[int, int]:
+    """
+    アクター数に応じたレーン高さとタスク一辺（EMU）を返す。
+    少ないときは大きく、多いときは小さくする。最小フォント 10pt 維持のため下限あり。
+    """
+    if num_actors <= 2:
+        lane_height = int(1.8 * EMU_PER_INCH)
+        task_side = int(0.6 * EMU_PER_INCH)
+    elif num_actors <= 4:
+        lane_height = int(1.4 * EMU_PER_INCH)
+        task_side = int(0.5 * EMU_PER_INCH)
+    elif num_actors <= 6:
+        lane_height = int(1.2 * EMU_PER_INCH)
+        task_side = int(0.4 * EMU_PER_INCH)
+    else:
+        lane_height = int(1.0 * EMU_PER_INCH)
+        task_side = int(0.35 * EMU_PER_INCH)
+    task_side = max(task_side, MIN_TASK_SIDE_EMU)
+    return lane_height, task_side
 
 
 def _resolve_actor_index(actor: Any, actors: list[str]) -> int:
@@ -194,19 +218,56 @@ def compute_layout(
 ) -> ProcessLayout:
     """
     アクター名・ノードリストからレイアウトを計算する。
-    ノードは YAML の並び順で列に割り当て、max_cols を超えたら次スライド。
+    アクター数に応じてレーン高さ・タスクサイズを調整し、
+    図がスライドの描画領域からはみ出さないようスケールする。
+    ノードは列に割り当て、max_cols を超えたら次スライド。
     """
     layout = ProcessLayout(actors=actors, nodes=nodes)
     layout.content_top_offset = int(layout.slide_height * 0.25)
-    if max_cols_per_slide is None:
-        max_cols_per_slide = layout.max_cols_per_slide
+
+    # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
+    num_actors = len(actors) or 1
+    layout.lane_height, layout.task_side = _base_sizes_for_actors(num_actors)
+    layout.gap = layout.task_side
 
     id_to_node = {n.id: n for n in nodes}
     _assign_columns(nodes, id_to_node)
 
+    # 仮の max_cols_per_slide でスライド・列を割り当て
+    unit = layout.task_side + layout.gap
+    if max_cols_per_slide is not None:
+        tentative_max_cols = max(1, max_cols_per_slide)
+    else:
+        tentative_max_cols = max(1, layout.content_width // unit)
     for node in nodes:
-        node.slide_index = node.column // max_cols_per_slide
-        node.col_in_slide = node.column % max_cols_per_slide
+        node.slide_index = node.column // tentative_max_cols
+        node.col_in_slide = node.column % tentative_max_cols
+
+    # スライドに必ず収まるようスケールを算出
+    required_height = num_actors * layout.lane_height
+    bottom_margin = int(0.05 * layout.slide_height)
+    available_height = layout.slide_height - layout.content_top_offset - bottom_margin
+    required_width_per_slide = tentative_max_cols * unit
+    available_width = layout.content_width
+
+    scale_h = available_height / required_height if required_height else 1.0
+    scale_w = available_width / required_width_per_slide if required_width_per_slide else 1.0
+    scale = min(scale_h, scale_w, 1.0)
+
+    # 最小フォント 10pt 維持のため task_side の下限を守る
+    if layout.task_side * scale < MIN_TASK_SIDE_EMU:
+        scale = MIN_TASK_SIDE_EMU / layout.task_side
+
+    layout.lane_height = int(layout.lane_height * scale)
+    layout.task_side = max(int(layout.task_side * scale), MIN_TASK_SIDE_EMU)
+    layout.gap = layout.task_side
+
+    # スケール後の列幅で最大列数を再計算し、スライド・列を再割り当て
+    unit = layout.task_side + layout.gap
+    final_max_cols = max(1, layout.content_width // unit)
+    for node in nodes:
+        node.slide_index = node.column // final_max_cols
+        node.col_in_slide = node.column % final_max_cols
 
     layout.num_slides = max((n.slide_index for n in nodes), default=0) + 1
 

@@ -95,6 +95,10 @@
 - Phase 3 完了: セルフレビュー。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
 
+## 入出力の場所（YAML は input に置く）
+
+- 諸事情により、YAML を変更した場合は **input** フォルダに置く運用にした。出力は従来どおり **output** フォルダ。スキル（process-yaml）と plan の説明を input/output に合わせて更新済み。
+
 ## 分岐時の列配置 DoD（plan-execute 2025-02-08）
 
 - **分岐時の列配置**: `_assign_columns` を BFS ベースに変更。入次数0から列を伝播し、分岐（gateway）の next はすべて「分岐の列+1」の同一列に割り当て。合流点は複数 predecessor の最大列+1。分岐先を同一列に配置し得るため横に間延びしない。
@@ -102,3 +106,10 @@
 - Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
 - Phase 3 完了: Codex 未使用のためセルフレビューのみ。変更は _assign_columns の BFS 列割り当てのみで、既存テスト全通過。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+
+## アクター数スケール・スライド収まり DoD（plan-execute 2025-02-08）
+
+- **アクター数に応じたスケール**: `yaml_loader._base_sizes_for_actors(num_actors)` を追加。1–2 アクターはレーン高・タスク大、3–4 は中、5–6 は現行相当、7+ は小さく。最小タスク一辺 MIN_TASK_SIDE_EMU（0.25 inch）で 10pt 維持。`compute_layout` でベースサイズ適用後にスケール算出。
+- **スライドに必ず収まる**: 必要高さ＝アクター数×レーン高、必要幅＝列数×(task_side+gap)。利用可能高さ/幅と比較して scale = min(scale_h, scale_w, 1.0) を算出し、lane_height / task_side / gap をスケール。最小 task_side を下回らないよう補正。スケール後に final_max_cols を再計算してスライド・列を再割り当て。
+- テスト: `test_actor_count_scaling`（2 アクター vs 7 アクターでレーン・タスクが少ない方が大きい）、`test_layout_fits_in_slide`（図がスライド内に収まる）を追加。
+- Phase 1 完了: 全 DoD 達成。

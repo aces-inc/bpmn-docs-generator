@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from process_to_pptx.yaml_loader import load_process_yaml, compute_layout
+from process_to_pptx.yaml_loader import (
+    ProcessNode,
+    load_process_yaml,
+    compute_layout,
+)
 
 
 SAMPLE_YAML = """
@@ -54,3 +58,37 @@ def test_compute_layout(tmp_path: Path) -> None:
     for nid, (left, top, w, h) in layout.node_positions.items():
         assert w == layout.task_side
         assert h == layout.task_side
+
+
+def test_actor_count_scaling() -> None:
+    """アクター数が少ないときはレーン・タスクが大きく、多いときは小さくなる。"""
+    two_actors = ["A", "B"]
+    seven_actors = ["A", "B", "C", "D", "E", "F", "G"]
+    nodes_2 = [
+        ProcessNode(id=1, type="task", actor_index=0, label="T1", next_ids=[2]),
+        ProcessNode(id=2, type="task", actor_index=1, label="T2", next_ids=[]),
+    ]
+    nodes_7 = [
+        ProcessNode(id=i, type="task", actor_index=(i - 1) % 7, label=f"T{i}", next_ids=[i + 1] if i < 7 else [])
+        for i in range(1, 8)
+    ]
+    layout_few = compute_layout(two_actors, nodes_2)
+    layout_many = compute_layout(seven_actors, nodes_7)
+    assert layout_few.lane_height > layout_many.lane_height
+    assert layout_few.task_side > layout_many.task_side
+
+
+def test_layout_fits_in_slide(tmp_path: Path) -> None:
+    """生成レイアウトの図がスライドの描画領域からはみ出さない。"""
+    p = tmp_path / "process.yaml"
+    p.write_text(SAMPLE_YAML, encoding="utf-8")
+    actors, nodes = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    # 縦: 描画領域下端
+    content_bottom = layout.content_top_offset + len(actors) * layout.lane_height
+    assert content_bottom <= layout.slide_height, "レーンがスライド下端からはみ出す"
+    # 各ノードがスライド内
+    for nid, (left, top, w, h) in layout.node_positions.items():
+        assert left >= 0 and top >= 0, f"ノード {nid} が左上にはみ出す"
+        assert left + w <= layout.slide_width, f"ノード {nid} が右にはみ出す"
+        assert top + h <= layout.slide_height, f"ノード {nid} が下にはみ出す"
