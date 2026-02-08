@@ -168,3 +168,10 @@
   - `_draw_actor_labels`: 各レーンの中央 Y を `lane_center_y = lane_top + lane_height // 2` で算出し、ボックス高さの半分だけ上にずらして `top = lane_center_y - box_height // 2` で配置。テキストは `vertical_anchor = MSO_ANCHOR.MIDDLE` と `p.alignment = PP_ALIGN.CENTER` でボックス内中央に。
   - テスト: `test_actor_labels_vertically_centered_in_lane` でレーン中央とシェイプ中央の一致を検証。
 - 品質ゲート: SKIP。ruff / pytest 通過。
+
+## アクター名の四角 DoD（plan-execute 2025-02-09）
+
+- **アクター名の四角**: アクター名を点線から 2pt 離した長方形（四角）内に配置。点線の上下 2pt ずつ離して等間隔。
+  - `_draw_actor_labels`: テキストボックスではなく `add_shape(MSO_SHAPE.ROUNDED_RECTANGLE)` で長方形を描画。top = lane_top + 2pt, height = lane_height - 4pt, left = left_margin + 2pt, width = left_label_width - 4pt。テキストは上下中央・左右中央のまま。
+  - テスト: `test_actor_labels_in_box_2pt_from_dotted_line` でボックス上端・高さが 2pt 仕様であることを検証。
+- 品質ゲート: SKIP。ruff / pytest 通過。

@@ -10,6 +10,7 @@ from pptx.dml.color import RGBColor
 from pptx.oxml import parse_xml
 
 from .yaml_loader import (
+    EMU_PER_PT,
     ProcessLayout,
     load_process_yaml,
     compute_layout,
@@ -26,27 +27,39 @@ def _add_arrow_to_connector(connector) -> None:
     )
 
 
+# DoD: アクター名の四角は点線から 2pt 離す
+ACTOR_BOX_GAP_PT = 2
+
+
 def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
-    """スライド左側にアクター名を描画。DoD: アクター名はスイムレーンの上下中央に配置。"""
+    """スライド左側にアクター名を描画。DoD: 点線から2pt離した長方形内・スイムレーン上下中央・等間隔。"""
+    gap_emu = ACTOR_BOX_GAP_PT * EMU_PER_PT
     for i, name in enumerate(layout.actors):
-        # スイムレーンの上下中央にボックスを配置
+        # 点線の上下 2pt ずつ離して四角を配置（等間隔）
         lane_top = layout.content_top_offset + i * layout.lane_height
-        lane_center_y = lane_top + layout.lane_height // 2
-        box_height = layout.task_side  # 高さはタスク一辺と揃える
-        top = lane_center_y - box_height // 2
-        # テキストボックス: 左余白の内側、幅は left_label_width に収める
-        w = layout.left_label_width - 36000  # 約 1mm マージン（EMU）
-        left = layout.left_margin + 18000
-        tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(w), Emu(box_height))
-        tf = tb.text_frame
+        top = lane_top + gap_emu
+        box_height = layout.lane_height - 2 * gap_emu
+        # 長方形の横幅はアクター列幅に準拠、左右も 2pt 内側
+        left = layout.left_margin + gap_emu
+        width = layout.left_label_width - 2 * gap_emu
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Emu(left),
+            Emu(top),
+            Emu(width),
+            Emu(box_height),
+        )
+        tf = shape.text_frame
         tf.clear()
         p = tf.paragraphs[0]
         p.text = name
         p.font.size = Pt(10)
         p.font.bold = True
-        # テキストをボックス内で上下中央・左右中央に（DoD: アクター名の位置）
         p.alignment = PP_ALIGN.CENTER
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        shape.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
 
 
 def _draw_lane_separators(slide, layout: ProcessLayout) -> None:

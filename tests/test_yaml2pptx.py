@@ -6,7 +6,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx import Presentation
 
 from process_to_pptx import yaml2pptx
-from process_to_pptx.yaml_loader import load_process_yaml, compute_layout
+from process_to_pptx.yaml_loader import EMU_PER_PT, load_process_yaml, compute_layout
 
 
 SAMPLE_YAML = """
@@ -223,3 +223,36 @@ def test_actor_labels_vertically_centered_in_lane(tmp_path: Path) -> None:
             found = True
             break
         assert found, f"アクター名 {name} のテキストボックスが見つからない"
+
+
+def test_actor_labels_in_box_2pt_from_dotted_line(tmp_path: Path) -> None:
+    """アクター名が点線から2pt離した長方形内にあり、等間隔（DoD: アクター名の四角）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    actors, nodes = load_process_yaml(yaml_path)
+    layout = compute_layout(actors, nodes)
+    gap_emu = 2 * EMU_PER_PT  # 2pt
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    for i, name in enumerate(["A", "B"]):
+        lane_top = layout.content_top_offset + i * layout.lane_height
+        expected_top = lane_top + gap_emu
+        expected_height = layout.lane_height - 2 * gap_emu
+        found = False
+        for s in slide.shapes:
+            if not hasattr(s, "text_frame") or not s.text_frame.paragraphs:
+                continue
+            if s.text_frame.paragraphs[0].text.strip() != name:
+                continue
+            # 四角の上端は点線から 2pt 下
+            assert int(s.top) >= expected_top - 5000 and int(s.top) <= expected_top + 5000, (
+                f"アクター {name}: ボックス上端が点線+2ptでない (got {s.top})"
+            )
+            assert int(s.height) >= expected_height - 5000 and int(s.height) <= expected_height + 5000, (
+                f"アクター {name}: ボックス高さが lane_height-4pt でない (got {s.height})"
+            )
+            found = True
+            break
+        assert found, f"アクター名 {name} のシェイプが見つからない"
