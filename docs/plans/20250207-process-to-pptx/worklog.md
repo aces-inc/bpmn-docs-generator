@@ -124,3 +124,6 @@
 - **点線の範囲**: `_draw_lane_separators` の点線の始点を `x1 = layout.left_label_width` から `x1 = 0` に変更。レーンの左端（スライド左端）まで届くように描画。
 - **同一アクターへの複数分岐**: `compute_layout` で同一 (slide_index, actor_index, col_in_slide) のノードをグループ化。2件以上のグループはレーン高さの90%を縦に均等分割し、各ノードの top/height を再計算。横幅は task_side のまま。
 - Phase 1 完了: 全 DoD 達成（未完了4項目対応済み）。
+- Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
+- Phase 3 完了: セルフレビュー。変更は yaml_loader（60%比率・左端幅・同一セル縦分割）と yaml2pptx（点線左端）のみ。既存テスト全通過。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
