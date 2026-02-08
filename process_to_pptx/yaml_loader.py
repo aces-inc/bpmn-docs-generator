@@ -141,7 +141,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             continue
         nid = _normalize_id(nid)
         typ = (item.get("type") or "task").lower()
-        if typ not in ("task", "gateway"):
+        if typ not in ("task", "gateway", "start", "end"):
             typ = "task"
         actor = item.get("actor", 0)
         actor_index = _resolve_actor_index(actor, actors)

@@ -127,3 +127,13 @@
 - Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
 - Phase 3 完了: セルフレビュー。変更は yaml_loader（60%比率・左端幅・同一セル縦分割）と yaml2pptx（点線左端）のみ。既存テスト全通過。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+
+## スタート・ゴール DoD（plan-execute 2025-02-09、1件ずつ実装）
+
+- **スタート・ゴール**: YAML で `type: start` / `type: end` を指定可能に。開始・終了ノードを PPTX 上で正円（MSO_SHAPE.OVAL、幅＝高さ）で描画。
+  - `yaml_loader`: type に "start", "end" を許可。
+  - `yaml2pptx`: start/end のとき OVAL を描画し、セル内で幅＝高さにして正円に。
+  - `docs/yaml-schema.md`: type に start/end を追記。
+  - テスト: `test_load_accepts_start_end_types`, `test_start_end_drawn_as_oval` を追加。
+- 品質ゲート: SKIP。ruff / pytest 手動実行で通過。
+- 実装・テスト・確認・コミットを 1 件ずつ実施。

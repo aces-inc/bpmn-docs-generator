@@ -69,11 +69,21 @@ CONNECTION_SITE_LEFT = 1
 
 
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
-    """タスクまたは分岐の図形を 1 つ描画。タスクは正方形の四角、分岐はひし形。"""
+    """タスク・分岐・スタート・ゴールの図形を 1 つ描画。スタート/ゴールは正円、分岐はひし形、タスクは四角。"""
     if node.type == "gateway":
         shape_type = MSO_SHAPE.DIAMOND
+    elif node.type in ("start", "end"):
+        shape_type = MSO_SHAPE.OVAL  # 正円は幅＝高さの楕円で描画
     else:
         shape_type = MSO_SHAPE.ROUNDED_RECTANGLE
+
+    # スタート・ゴールは正円のため、セル内で幅＝高さにし中央に配置
+    if node.type in ("start", "end"):
+        side = min(width, height)
+        left = left + (width - side) // 2
+        top = top + (height - side) // 2
+        width = height = side
+
     shape = slide.shapes.add_shape(
         shape_type,
         Emu(left),

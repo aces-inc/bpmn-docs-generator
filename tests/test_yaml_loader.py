@@ -47,6 +47,36 @@ def test_load_process_yaml(tmp_path: Path) -> None:
     assert nodes[2].actor_index == 1
 
 
+def test_load_accepts_start_end_types(tmp_path: Path) -> None:
+    """type: start / type: end を読み込める。"""
+    yaml_text = """
+actors: [X]
+nodes:
+  - id: 0
+    type: start
+    actor: 0
+    label: 開始
+    next: [1]
+  - id: 1
+    type: task
+    actor: 0
+    label: 作業
+    next: [2]
+  - id: 2
+    type: end
+    actor: 0
+    label: 終了
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    actors, nodes = load_process_yaml(p)
+    assert len(nodes) == 3
+    assert nodes[0].type == "start"
+    assert nodes[1].type == "task"
+    assert nodes[2].type == "end"
+
+
 def test_compute_layout(tmp_path: Path) -> None:
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
