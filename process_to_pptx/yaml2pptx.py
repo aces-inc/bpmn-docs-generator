@@ -16,11 +16,11 @@ from .yaml_loader import (
 
 
 def _add_arrow_to_connector(connector) -> None:
-    """コネクタの終端に矢印を付ける。"""
+    """コネクタの終端（接続先側）に矢印を付ける。OOXML では tailEnd が線の終点（end）、headEnd が始点。"""
     line_elem = connector.line._get_or_add_ln()
     line_elem.append(
         parse_xml(
-            '<a:endLn xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="38100" len="38100"/>'
+            '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
         )
     )
 
@@ -44,9 +44,9 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
 
 
 def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
-    """レーン間をグレーの点線で区切る。"""
+    """レーン間をグレーの点線で区切る。点線はレーンの左端（アクター名がある左端）まで届く（DoD）。"""
     gray = RGBColor(0x80, 0x80, 0x80)
-    x1 = int(layout.left_label_width)
+    x1 = 0  # レーン左端まで届かせる
     x2 = int(layout.slide_width - layout.right_margin)
     for i in range(1, len(layout.actors)):
         y = layout.content_top_offset + i * layout.lane_height

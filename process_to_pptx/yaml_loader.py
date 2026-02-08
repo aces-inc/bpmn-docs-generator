@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,7 +38,8 @@ class ProcessLayout:
     # 定数（EMU）
     slide_width: int = 10 * EMU_PER_INCH
     slide_height: int = int(7.5 * EMU_PER_INCH)
-    left_label_width: int = int(2.0 * EMU_PER_INCH)
+    # 左余白を抑え、アクター名とタスク領域が一体になる幅（DoD: 左端開始位置）
+    left_label_width: int = int(1.2 * EMU_PER_INCH)
     right_margin: int = int(0.5 * EMU_PER_INCH)
     lane_height: int = int(1.2 * EMU_PER_INCH)
     task_side: int = int(0.4 * EMU_PER_INCH)
@@ -70,24 +71,24 @@ class ProcessLayout:
         return max(1, self.content_width // unit)
 
 
+# タスク正方形の一辺はスイムレーン高さの約60%（DoD）
+TASK_SIDE_RATIO = 0.6
+
+
 def _base_sizes_for_actors(num_actors: int) -> tuple[int, int]:
     """
-    アクター数に応じたレーン高さとタスク一辺（EMU）を返す。
+    アクター数に応じたレーン高さ（EMU）を返す。タスク一辺はレーン高さの約60%。
     少ないときは大きく、多いときは小さくする。最小フォント 10pt 維持のため下限あり。
     """
     if num_actors <= 2:
         lane_height = int(1.8 * EMU_PER_INCH)
-        task_side = int(0.6 * EMU_PER_INCH)
     elif num_actors <= 4:
         lane_height = int(1.4 * EMU_PER_INCH)
-        task_side = int(0.5 * EMU_PER_INCH)
     elif num_actors <= 6:
         lane_height = int(1.2 * EMU_PER_INCH)
-        task_side = int(0.4 * EMU_PER_INCH)
     else:
         lane_height = int(1.0 * EMU_PER_INCH)
-        task_side = int(0.35 * EMU_PER_INCH)
-    task_side = max(task_side, MIN_TASK_SIDE_EMU)
+    task_side = max(int(lane_height * TASK_SIDE_RATIO), MIN_TASK_SIDE_EMU)
     return lane_height, task_side
 
 
@@ -259,7 +260,8 @@ def compute_layout(
         scale = MIN_TASK_SIDE_EMU / layout.task_side
 
     layout.lane_height = int(layout.lane_height * scale)
-    layout.task_side = max(int(layout.task_side * scale), MIN_TASK_SIDE_EMU)
+    # タスク正方形の一辺はレーン高さの約60%（DoD）
+    layout.task_side = max(int(layout.lane_height * TASK_SIDE_RATIO), MIN_TASK_SIDE_EMU)
     layout.gap = layout.task_side
 
     # スケール後の列幅で最大列数を再計算し、スライド・列を再割り当て
@@ -292,5 +294,30 @@ def compute_layout(
             layout.task_side,
             layout.task_side,
         )
+
+    # 同一アクター・同一列に複数ノードがある場合、レーン高さの90%を縦分割して配置（DoD）
+    key_to_nodes: dict[tuple[int, int, int], list[ProcessNode]] = defaultdict(list)
+    for node in nodes:
+        key_to_nodes[(node.slide_index, node.actor_index, node.col_in_slide)].append(node)
+
+    for key, group in key_to_nodes.items():
+        if len(group) <= 1:
+            continue
+        _slide_idx, lane, col = key
+        lane_top = layout.content_top_offset + lane * layout.lane_height
+        zone_height = int(layout.lane_height * 0.9)
+        zone_top = lane_top + (layout.lane_height - zone_height) // 2
+        n = len(group)
+        row_height = zone_height // n
+        remainder = zone_height % n
+        left = layout.left_label_width + col * (layout.task_side + layout.gap)
+        # 列幅は1タスク時と同じ（task_side）。高さのみ分割。
+        width = layout.task_side
+        offset = 0
+        for i, node in enumerate(group):
+            h = row_height + (1 if i < remainder else 0)
+            top = zone_top + offset
+            offset += h
+            layout.node_positions[node.id] = (left, top, width, h)
 
     return layout
