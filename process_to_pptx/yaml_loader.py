@@ -18,13 +18,15 @@ MIN_TASK_SIDE_EMU = int(0.25 * EMU_PER_INCH)
 
 @dataclass
 class ProcessNode:
-    """1 ノード（タスクまたは分岐）。"""
+    """1 ノード（タスク・分岐・スタート・終了）。"""
 
     id: str | int
-    type: str  # "task" | "gateway"
+    type: str  # "task" | "gateway" | "start" | "end"
     actor_index: int
     label: str
     next_ids: list[str | int]
+    # gateway のときのみ: "exclusive"（条件分岐・菱形に✕）| "parallel"（並行・菱形に＋）
+    gateway_type: str = "exclusive"
     # レイアウト後に設定
     column: int = 0
     slide_index: int = 0
@@ -154,6 +156,11 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
         else:
             next_ids = []
 
+        gateway_type = "exclusive"
+        if typ == "gateway":
+            gt = (item.get("gateway_type") or "exclusive").lower()
+            gateway_type = "parallel" if gt == "parallel" else "exclusive"
+
         nodes.append(
             ProcessNode(
                 id=nid,
@@ -161,6 +168,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
                 actor_index=actor_index,
                 label=label,
                 next_ids=next_ids,
+                gateway_type=gateway_type,
             )
         )
 

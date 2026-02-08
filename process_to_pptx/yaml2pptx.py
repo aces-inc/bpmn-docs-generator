@@ -99,7 +99,11 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
     tf.margin_right = 0
     tf.margin_bottom = 0
     p = tf.paragraphs[0]
-    p.text = node.label
+    # 分岐図形: 条件分岐は菱形に✕、並行は菱形に＋（DoD）
+    if node.type == "gateway":
+        p.text = "＋" if node.gateway_type == "parallel" else "✕"
+    else:
+        p.text = node.label
     p.font.size = Pt(10)
     p.font.bold = False
     p.font.color.rgb = RGBColor(0, 0, 0)  # 黒文字（DoD: タスク文字の配置）

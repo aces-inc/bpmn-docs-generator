@@ -47,6 +47,40 @@ def test_load_process_yaml(tmp_path: Path) -> None:
     assert nodes[2].actor_index == 1
 
 
+def test_load_gateway_type(tmp_path: Path) -> None:
+    """gateway で gateway_type: exclusive / parallel を読み込める。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: gateway
+    actor: 0
+    label: 分岐
+    gateway_type: parallel
+    next: [2, 3]
+  - id: 2
+    type: task
+    actor: 0
+    label: T2
+    next: []
+  - id: 3
+    type: task
+    actor: 0
+    label: T3
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    assert nodes[0].type == "gateway"
+    assert nodes[0].gateway_type == "parallel"
+    # 省略時は exclusive
+    yaml2 = yaml_text.replace("gateway_type: parallel", "")
+    p.write_text(yaml2.strip(), encoding="utf-8")
+    _, nodes2 = load_process_yaml(p)
+    assert nodes2[0].gateway_type == "exclusive"
+
+
 def test_load_accepts_start_end_types(tmp_path: Path) -> None:
     """type: start / type: end を読み込める。"""
     yaml_text = """

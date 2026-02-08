@@ -95,3 +95,51 @@ def test_start_end_drawn_as_oval(tmp_path: Path) -> None:
         except (ValueError, AttributeError):
             pass  # コネクタ・テキストボックス等は auto shape ではない
     assert len(ovals) >= 2, "start と end の少なくとも2つが正円（OVAL）で描画されていること"
+
+
+SAMPLE_YAML_GATEWAY_SYMBOLS = """
+actors:
+  - A
+nodes:
+  - id: 1
+    type: gateway
+    actor: 0
+    label: 条件
+    gateway_type: exclusive
+    next: [2, 3]
+  - id: 2
+    type: gateway
+    actor: 0
+    label: 並行
+    gateway_type: parallel
+    next: [4]
+  - id: 3
+    type: task
+    actor: 0
+    label: T3
+    next: [4]
+  - id: 4
+    type: task
+    actor: 0
+    label: T4
+    next: []
+"""
+
+
+def test_gateway_drawn_with_x_or_plus(tmp_path: Path) -> None:
+    """条件分岐は菱形に✕、並行分岐は菱形に＋で描画される（DoD）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML_GATEWAY_SYMBOLS.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    diamond_texts = []
+    for s in slide.shapes:
+        try:
+            if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.DIAMOND:
+                diamond_texts.append(s.text_frame.paragraphs[0].text if s.text_frame.paragraphs else "")
+        except (ValueError, AttributeError):
+            pass
+    assert "✕" in diamond_texts, "条件分岐（exclusive）は菱形に✕"
+    assert "＋" in diamond_texts, "並行分岐（parallel）は菱形に＋"

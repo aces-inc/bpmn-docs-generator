@@ -137,3 +137,11 @@
   - テスト: `test_load_accepts_start_end_types`, `test_start_end_drawn_as_oval` を追加。
 - 品質ゲート: SKIP。ruff / pytest 手動実行で通過。
 - 実装・テスト・確認・コミットを 1 件ずつ実施。
+
+## 分岐図形 DoD（plan-execute 2025-02-09、2件目）
+
+- **分岐図形**: 条件分岐は菱形＋✕、並行処理は菱形＋＋で描画。
+  - YAML に `gateway_type: exclusive`（省略可）／`parallel` を追加。ProcessNode に gateway_type を追加。
+  - yaml2pptx: gateway 描画時にテキストを "✕"（exclusive）または "＋"（parallel）に設定。
+  - スキーマ・テスト（test_load_gateway_type, test_gateway_drawn_with_x_or_plus）追加。
+- 品質ゲート: SKIP。ruff / pytest 通過。コミット済み。
