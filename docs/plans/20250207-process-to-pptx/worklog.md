@@ -94,3 +94,9 @@
 - Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
 - Phase 3 完了: セルフレビュー。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+
+## 分岐時の列配置 DoD（plan-execute 2025-02-08）
+
+- **分岐時の列配置**: `_assign_columns` を BFS ベースに変更。入次数0から列を伝播し、分岐（gateway）の next はすべて「分岐の列+1」の同一列に割り当て。合流点は複数 predecessor の最大列+1。分岐先を同一列に配置し得るため横に間延びしない。
+- Phase 1 完了: 全 DoD 達成（分岐時の列配置対応済み）。
+- Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成予定。

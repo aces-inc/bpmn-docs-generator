@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -143,11 +144,47 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
 
 def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
     """
-    フロー順（YAML の並びをそのまま使用）で列番号を付与。
-    同一スライド内では col は 0..max_cols-1。
+    フロー順で列番号を付与。分岐発生時は「分岐前の列＋分岐先用の1列」とし、
+    分岐先のノードは同一列に配置し得るようにする（横に間延びしない）。
+    入次数0から BFS で列を伝播し、複数 predecessor の場合は最大列+1 を採用。
     """
-    for i, node in enumerate(nodes):
-        node.column = i
+    # 入次数を計算（next の逆方向）
+    in_degree: dict[str | int, int] = {n.id: 0 for n in nodes}
+    for node in nodes:
+        for to_id in node.next_ids:
+            if to_id in id_to_node:
+                in_degree[to_id] = in_degree.get(to_id, 0) + 1
+
+    # 列は未割り当てを -1 で表す
+    for node in nodes:
+        node.column = -1
+
+    # 入次数0のノードを列0にし、BFS のキューに入れる
+    queue: deque[ProcessNode] = deque()
+    for node in nodes:
+        if in_degree[node.id] == 0:
+            node.column = 0
+            queue.append(node)
+
+    while queue:
+        n = queue.popleft()
+        c = n.column
+        for to_id in n.next_ids:
+            next_node = id_to_node.get(to_id)
+            if not next_node:
+                continue
+            # 分岐先も単一 next も同じ: 次の列は c+1。合流点は複数回更新で max になる
+            next_node.column = max(next_node.column, c + 1)
+            in_degree[next_node.id] -= 1
+            if in_degree[next_node.id] == 0:
+                queue.append(next_node)
+
+    # 未到達ノード（閉路や孤立）は既存の最大列の続きで割り当て
+    max_col = max((n.column for n in nodes if n.column >= 0), default=-1)
+    for node in nodes:
+        if node.column < 0:
+            max_col += 1
+            node.column = max_col
 
 
 def compute_layout(
