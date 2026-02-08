@@ -27,6 +27,27 @@ def _add_arrow_to_connector(connector) -> None:
     )
 
 
+def _add_dashed_line_and_ends(connector, person_end_oval: bool, service_end_arrow: bool) -> None:
+    """システム接続用: 点線にし、人側を○(oval)、サービス側を矢印にする。"""
+    ln = connector.line._get_or_add_ln()
+    dash = parse_xml(
+        '<a:prstDash xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" val="dot"/>'
+    )
+    ln.append(dash)
+    if person_end_oval:
+        ln.append(
+            parse_xml(
+                '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
+            )
+        )
+    if service_end_arrow:
+        ln.append(
+            parse_xml(
+                '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+            )
+        )
+
+
 # DoD: アクター名の四角は点線から 2pt 離す
 ACTOR_BOX_GAP_PT = 2
 
@@ -82,9 +103,11 @@ def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
         ln.append(dash)
 
 
-# 四角形の接続点: 0=上, 1=左, 2=下, 3=右（各辺の中央＝上下中央）
-CONNECTION_SITE_RIGHT = 3
+# 四角形の接続点: 0=上, 1=左, 2=下, 3=右（各辺の中央）
+CONNECTION_SITE_TOP = 0
 CONNECTION_SITE_LEFT = 1
+CONNECTION_SITE_BOTTOM = 2
+CONNECTION_SITE_RIGHT = 3
 
 
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
@@ -174,9 +197,12 @@ def yaml_to_pptx(
         _draw_lane_separators(slide, layout)
         total_shapes += max(0, len(layout.actors) - 1)
 
-        # このスライドに属するノード
+        # このスライドに属するノード（システムレーンはサービス図形で別描画するためスキップ）
+        service_shape_by_lane: dict[int, object] = {}
         for node in layout.nodes:
             if node.slide_index != slide_idx:
+                continue
+            if node.actor_index in layout.system_lane_indices:
                 continue
             pos = layout.node_positions.get(node.id)
             if not pos:
@@ -185,6 +211,31 @@ def yaml_to_pptx(
             shp = _draw_node_shape(slide, node, left, top, w, h)
             shape_by_id[node.id] = shp
             total_shapes += 1
+
+        # このスライドにシステムへ接続するノードがある場合のみサービスを描画（1レーン1つ）
+        need_system_on_slide = any(
+            n.slide_index == slide_idx
+            and (getattr(n, "request_to_system", False) or getattr(n, "response_from_system", False))
+            for n in layout.nodes
+            if n.actor_index not in layout.system_lane_indices
+        )
+        if need_system_on_slide and layout.system_lane_indices:
+            for lane_idx in layout.system_lane_indices:
+                service_side = layout.task_side
+                left = layout.left_margin + layout.left_label_width
+                top = layout.content_top_offset + lane_idx * layout.lane_height + (layout.lane_height - service_side) // 2
+                svc = slide.shapes.add_shape(
+                    MSO_SHAPE.FLOWCHART_MAGNETIC_DISK,
+                    Emu(left),
+                    Emu(top),
+                    Emu(service_side),
+                    Emu(service_side),
+                )
+                svc.fill.solid()
+                svc.fill.fore_color.rgb = RGBColor(0xE8, 0xE8, 0xE8)
+                svc.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
+                service_shape_by_lane[lane_idx] = svc
+                total_shapes += 1
 
         # このスライド内のエッジのみ矢印で接続（両端が同じスライド）
         for from_id, to_id in layout.edges:
@@ -237,6 +288,38 @@ def yaml_to_pptx(
                 p.font.color.rgb = RGBColor(0x37, 0x37, 0x37)
                 p.alignment = PP_ALIGN.CENTER
                 total_shapes += 1
+
+        # システム接続: リクエスト（人→サービス・点線・人側○・サービス側矢印下向き）とレスポンス（サービス→人）
+        if layout.system_lane_indices and service_shape_by_lane:
+            system_lane = layout.system_lane_indices[0]
+            service_shp = service_shape_by_lane.get(system_lane)
+            if service_shp:
+                for node in layout.nodes:
+                    if node.slide_index != slide_idx or node.actor_index in layout.system_lane_indices:
+                        continue
+                    node_shp = shape_by_id.get(node.id)
+                    if not node_shp:
+                        continue
+                    same_col = node.col_in_slide == 0
+                    conn_type = MSO_CONNECTOR_TYPE.STRAIGHT if same_col else MSO_CONNECTOR_TYPE.ELBOW
+                    if getattr(node, "request_to_system", False):
+                        conn = slide.shapes.add_connector(conn_type, 0, 0, 0, 0)
+                        conn.begin_connect(node_shp, CONNECTION_SITE_RIGHT)
+                        conn.end_connect(service_shp, CONNECTION_SITE_TOP)
+                        conn.line.fill.solid()
+                        conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
+                        conn.line.width = Pt(1)
+                        _add_dashed_line_and_ends(conn, person_end_oval=True, service_end_arrow=True)
+                        total_shapes += 1
+                    if getattr(node, "response_from_system", False):
+                        conn = slide.shapes.add_connector(conn_type, 0, 0, 0, 0)
+                        conn.begin_connect(service_shp, CONNECTION_SITE_BOTTOM)
+                        conn.end_connect(node_shp, CONNECTION_SITE_LEFT)
+                        conn.line.fill.solid()
+                        conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
+                        conn.line.width = Pt(1)
+                        _add_dashed_line_and_ends(conn, person_end_oval=True, service_end_arrow=True)
+                        total_shapes += 1
 
     prs.save(str(output_path))
     return total_shapes

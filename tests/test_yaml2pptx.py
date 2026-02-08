@@ -310,6 +310,41 @@ nodes:
 """
 
 
+SYSTEM_CONNECTION_YAML = """
+actors: [営業, CRM]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 入力
+    next: [2]
+    request_to: true
+  - id: 2
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+    response_from: true
+"""
+
+
+def test_system_connection_draws_magnetic_disk_and_dashed(tmp_path: Path) -> None:
+    """システム接続: 最後のアクターに磁気ディスクを1つ描画し、request_to で点線接続（DoD: システム接続）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SYSTEM_CONNECTION_YAML.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    n = yaml2pptx.yaml_to_pptx(yaml_path, out)
+    assert out.exists()
+    assert n >= 5
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    magnetic = [
+        s for s in slide.shapes
+        if getattr(s, "auto_shape_type", None) == MSO_SHAPE.FLOWCHART_MAGNETIC_DISK
+    ]
+    assert len(magnetic) >= 1, "システムレーンに磁気ディスク図形が1つ描画されている"
+
+
 def test_artifact_drawn_as_flowchart_data(tmp_path: Path) -> None:
     """成果物ノードがフローチャートのデータ図形で描画され、中に成果物名がある（DoD: 成果物）。"""
     yaml_path = tmp_path / "in.yaml"

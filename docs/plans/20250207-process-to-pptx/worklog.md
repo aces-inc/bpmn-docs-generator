@@ -200,3 +200,12 @@
   - yaml2pptx: artifact のとき MSO_SHAPE.FLOWCHART_DATA で描画、テキストは node.label。
   - スキーマ・テスト: docs/yaml-schema.md に type: artifact を追記。test_load_accepts_artifact_type, test_artifact_drawn_as_flowchart_data を追加。
 - 品質ゲート: SKIP。ruff / pytest 通過。
+
+## システム接続 DoD（plan-execute 2025-02-09）
+
+- **システム接続**: 最後のアクターをシステムレーンとし、磁気ディスク図形を 1 レーン 1 つ描画。人タスクに `request_to` / `response_from` で点線接続（人側○、サービス側矢印）。
+  - YAML: ノードに `request_to: true`, `response_from: true` を指定可能。システムレーンは最後のアクター。
+  - yaml_loader: ProcessNode に request_to_system, response_from_system を追加。ProcessLayout に system_lane_indices を追加。
+  - yaml2pptx: システムレーンに FLOWCHART_MAGNETIC_DISK を 1 つ描画。点線コネクタで人側 oval・サービス側 triangle。列ずれ時は ELBOW。
+  - スキーマ・テスト: test_system_connection_draws_magnetic_disk_and_dashed を追加。
+- 品質ゲート: SKIP。ruff / pytest 通過。

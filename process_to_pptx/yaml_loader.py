@@ -33,6 +33,9 @@ class ProcessNode:
     next_labels: dict[str | int, str] = field(default_factory=dict)
     # gateway のときのみ: "exclusive"（条件分岐・菱形に✕）| "parallel"（並行・菱形に＋）
     gateway_type: str = "exclusive"
+    # システム接続（DoD）: 該当する場合のみ True。システムレーンは最後のアクターとする。
+    request_to_system: bool = False
+    response_from_system: bool = False
     # レイアウト後に設定
     column: int = 0
     slide_index: int = 0
@@ -67,6 +70,8 @@ class ProcessLayout:
     # 分岐矢印のラベル: (from_id, to_id) -> 表示テキスト
     edge_labels: dict[tuple[str | int, str | int], str] = field(default_factory=dict)
     num_slides: int = 1
+    # システムレーン（DoD: システム接続）。最後のアクターをシステムとする場合は [len(actors)-1]
+    system_lane_indices: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.gap == 0:
@@ -181,6 +186,9 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             gt = (item.get("gateway_type") or "exclusive").lower()
             gateway_type = "parallel" if gt == "parallel" else "exclusive"
 
+        request_to_system = bool(item.get("request_to"))
+        response_from_system = bool(item.get("response_from"))
+
         nodes.append(
             ProcessNode(
                 id=nid,
@@ -190,6 +198,8 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
                 next_ids=next_ids,
                 next_labels=next_labels,
                 gateway_type=gateway_type,
+                request_to_system=request_to_system,
+                response_from_system=response_from_system,
             )
         )
 
@@ -300,8 +310,14 @@ def compute_layout(
     layout = ProcessLayout(actors=actors, nodes=nodes)
     layout.content_top_offset = int(layout.slide_height * 0.25)
 
-    # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
     num_actors = len(actors) or 1
+    if num_actors >= 2 and any(
+        getattr(n, "request_to_system", False) or getattr(n, "response_from_system", False)
+        for n in nodes
+    ):
+        layout.system_lane_indices = [num_actors - 1]
+
+    # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
     layout.lane_height, layout.task_side = _base_sizes_for_actors(num_actors)
     layout.gap = layout.task_side
 
