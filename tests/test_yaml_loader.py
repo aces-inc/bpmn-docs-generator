@@ -6,7 +6,6 @@ from process_to_pptx.yaml_loader import (
     ProcessNode,
     load_process_yaml,
     compute_layout,
-    validate_no_isolated_human_tasks,
     SLIDE_MARGIN_MIN_EMU,
 )
 
@@ -148,25 +147,6 @@ nodes:
     assert layout.edge_labels.get((1, 3)) == "No"
 
 
-def test_load_accepts_artifact_type(tmp_path: Path) -> None:
-    """type: artifact を読み込める（DoD: 成果物）。"""
-    yaml_text = """
-actors: [A]
-nodes:
-  - id: 1
-    type: artifact
-    actor: 0
-    label: 見積書
-    next: []
-"""
-    p = tmp_path / "p.yaml"
-    p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
-    assert len(nodes) == 1
-    assert nodes[0].type == "artifact"
-    assert nodes[0].label == "見積書"
-
-
 def test_load_accepts_start_end_types(tmp_path: Path) -> None:
     """type: start / type: end を読み込める。"""
     yaml_text = """
@@ -208,6 +188,38 @@ def test_compute_layout(tmp_path: Path) -> None:
     for nid, (left, top, w, h) in layout.node_positions.items():
         assert w == layout.task_side
         assert h == layout.task_side
+
+
+def test_loop_start_at_column_zero_and_edge_present(tmp_path: Path) -> None:
+    """ループ: next で開始ノードを参照した場合、開始は常に列0に配置され、ループ矢印用のエッジが含まれる。"""
+    yaml_with_loop = """
+actors:
+  - A
+  - B
+nodes:
+  - id: 0
+    type: start
+    actor: 0
+    label: 開始
+    next: [1]
+  - id: 1
+    type: task
+    actor: 0
+    label: 作業1
+    next: [2]
+  - id: 2
+    type: task
+    actor: 0
+    label: 作業2
+    next: [0]
+"""
+    p = tmp_path / "process.yaml"
+    p.write_text(yaml_with_loop.strip(), encoding="utf-8")
+    actors, nodes = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    start_node = next(n for n in nodes if n.type == "start" and n.id == 0)
+    assert start_node.column == 0, "開始ノードはループ時も列0に配置される"
+    assert (2, 0) in layout.edges, "タスク2→開始のループ用エッジが含まれる"
 
 
 def test_slide_margin_10pt(tmp_path: Path) -> None:
@@ -255,64 +267,3 @@ def test_layout_fits_in_slide(tmp_path: Path) -> None:
         assert left >= 0 and top >= 0, f"ノード {nid} が左上にはみ出す"
         assert left + w <= layout.slide_width, f"ノード {nid} が右にはみ出す"
         assert top + h <= layout.slide_height, f"ノード {nid} が下にはみ出す"
-
-
-def test_validate_no_isolated_human_tasks_ok() -> None:
-    """接続されたフローでは孤立タスク検証で問題なし（DoD: 人のタスクの接続）。"""
-    actors = ["A", "B"]
-    nodes = [
-        ProcessNode(1, "start", 0, "開始", [2]),
-        ProcessNode(2, "task", 0, "T1", [3]),
-        ProcessNode(3, "task", 1, "T2", [4]),
-        ProcessNode(4, "end", 1, "終了", []),
-    ]
-    issues = validate_no_isolated_human_tasks(actors, nodes)
-    assert issues == [], "start→task→task→end は孤立なし"
-
-
-def test_validate_no_isolated_human_tasks_reports_isolated() -> None:
-    """接続先のないタスクや入ってこないタスクを検出する。"""
-    actors = ["A"]
-    nodes = [
-        ProcessNode(1, "task", 0, "T1", []),  # next が空 → 検出
-        ProcessNode(2, "task", 0, "T2", []),  # 誰からも参照されない → 検出
-    ]
-    issues = validate_no_isolated_human_tasks(actors, nodes)
-    assert len(issues) >= 1
-    assert "接続先(next)がありません" in " ".join(issues)
-    assert "接続する矢印がありません" in " ".join(issues)
-
-
-LOOP_YAML = """
-actors: [A]
-nodes:
-  - id: 1
-    type: start
-    actor: 0
-    label: 開始
-    next: [2]
-  - id: 2
-    type: task
-    actor: 0
-    label: 処理
-    next: [3]
-  - id: 3
-    type: task
-    actor: 0
-    label: 判定
-    next: [1]
-"""
-
-
-def test_loop_assigns_columns_and_edge(tmp_path: Path) -> None:
-    """ループ（スタートに戻る）が YAML で定義でき、列割り当てとエッジが正しい（DoD: ループ）。"""
-    p = tmp_path / "loop.yaml"
-    p.write_text(LOOP_YAML.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
-    layout = compute_layout(actors, nodes)
-    id_to_node = {n.id: n for n in nodes}
-    start = id_to_node[1]
-    back = id_to_node[3]
-    assert start.column == 0, "スタートは列0のまま"
-    assert back.column >= 1, "スタートに戻るノードは列1以上"
-    assert (3, 1) in layout.edges or (back.id, start.id) in layout.edges, "ループの矢印がエッジに含まれる"

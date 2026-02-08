@@ -33,9 +33,6 @@ class ProcessNode:
     next_labels: dict[str | int, str] = field(default_factory=dict)
     # gateway のときのみ: "exclusive"（条件分岐・菱形に✕）| "parallel"（並行・菱形に＋）
     gateway_type: str = "exclusive"
-    # システム接続（DoD）: 該当する場合のみ True。システムレーンは最後のアクターとする。
-    request_to_system: bool = False
-    response_from_system: bool = False
     # レイアウト後に設定
     column: int = 0
     slide_index: int = 0
@@ -70,8 +67,6 @@ class ProcessLayout:
     # 分岐矢印のラベル: (from_id, to_id) -> 表示テキスト
     edge_labels: dict[tuple[str | int, str | int], str] = field(default_factory=dict)
     num_slides: int = 1
-    # システムレーン（DoD: システム接続）。最後のアクターをシステムとする場合は [len(actors)-1]
-    system_lane_indices: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.gap == 0:
@@ -158,7 +153,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             continue
         nid = _normalize_id(nid)
         typ = (item.get("type") or "task").lower()
-        if typ not in ("task", "gateway", "start", "end", "artifact"):
+        if typ not in ("task", "gateway", "start", "end"):
             typ = "task"
         actor = item.get("actor", 0)
         actor_index = _resolve_actor_index(actor, actors)
@@ -186,9 +181,6 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             gt = (item.get("gateway_type") or "exclusive").lower()
             gateway_type = "parallel" if gt == "parallel" else "exclusive"
 
-        request_to_system = bool(item.get("request_to"))
-        response_from_system = bool(item.get("response_from"))
-
         nodes.append(
             ProcessNode(
                 id=nid,
@@ -198,46 +190,10 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
                 next_ids=next_ids,
                 next_labels=next_labels,
                 gateway_type=gateway_type,
-                request_to_system=request_to_system,
-                response_from_system=response_from_system,
             )
         )
 
     return actors, nodes
-
-
-def validate_no_isolated_human_tasks(
-    actors: list[str], nodes: list[ProcessNode]
-) -> list[str]:
-    """
-    人に属するタスクに孤立がないか検証する（DoD: 人のタスクの接続）。
-    孤立 = タスクなのに next が空（かつ type が end でない）、または
-    誰からも next で参照されていない（かつ type が start でない）。
-    戻り値: 検出した問題のメッセージリスト（0件ならOK）。
-    """
-    id_to_node = {n.id: n for n in nodes}
-    in_degree: dict[str | int, int] = {n.id: 0 for n in nodes}
-    for node in nodes:
-        for to_id in node.next_ids:
-            if to_id in id_to_node:
-                in_degree[to_id] = in_degree.get(to_id, 0) + 1
-
-    issues: list[str] = []
-    for node in nodes:
-        if node.type != "task":
-            continue
-        actor_name = actors[node.actor_index] if node.actor_index < len(actors) else str(node.actor_index)
-        # タスクで next が空なら「行き先のない孤立」
-        if not node.next_ids:
-            issues.append(
-                f"孤立したタスク: id={node.id} (actor={actor_name}) に接続先(next)がありません。"
-            )
-        # 誰からも参照されていないタスクは「入り口のない孤立」（start は type が start なので対象外）
-        if in_degree.get(node.id, 0) == 0:
-            issues.append(
-                f"孤立したタスク: id={node.id} (actor={actor_name}) へ接続する矢印がありません。"
-            )
-    return issues
 
 
 def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
@@ -257,20 +213,12 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
     for node in nodes:
         node.column = -1
 
-    # 入次数0のノードを列0にし、BFS のキューに入れる。ループ時は type=start をシードにする
+    # 入次数0のノードを列0にし、BFS のキューに入れる
     queue: deque[ProcessNode] = deque()
     for node in nodes:
         if in_degree[node.id] == 0:
             node.column = 0
             queue.append(node)
-    if not queue:
-        # 閉路のみのグラフ（ループ）: スタートノードを列0でシード
-        for node in nodes:
-            if node.type == "start":
-                node.column = 0
-                in_degree[node.id] = 0
-                queue.append(node)
-                break
 
     while queue:
         n = queue.popleft()
@@ -279,10 +227,7 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
             next_node = id_to_node.get(to_id)
             if not next_node:
                 continue
-            # ループでスタートに戻る場合はスタートの列0を維持（DoD: ループ）
-            if next_node.type == "start" and next_node.column == 0:
-                in_degree[next_node.id] -= 1
-                continue
+            # 分岐先も単一 next も同じ: 次の列は c+1。合流点は複数回更新で max になる
             next_node.column = max(next_node.column, c + 1)
             in_degree[next_node.id] -= 1
             if in_degree[next_node.id] == 0:
@@ -294,6 +239,11 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
         if node.column < 0:
             max_col += 1
             node.column = max_col
+
+    # ループ対応: スタートノードは常に列0に配置し、戻り矢印が左向きに描画されるようにする
+    for node in nodes:
+        if node.type == "start":
+            node.column = 0
 
 
 def compute_layout(
@@ -310,14 +260,8 @@ def compute_layout(
     layout = ProcessLayout(actors=actors, nodes=nodes)
     layout.content_top_offset = int(layout.slide_height * 0.25)
 
-    num_actors = len(actors) or 1
-    if num_actors >= 2 and any(
-        getattr(n, "request_to_system", False) or getattr(n, "response_from_system", False)
-        for n in nodes
-    ):
-        layout.system_lane_indices = [num_actors - 1]
-
     # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
+    num_actors = len(actors) or 1
     layout.lane_height, layout.task_side = _base_sizes_for_actors(num_actors)
     layout.gap = layout.task_side
 

@@ -162,50 +162,11 @@
 - 品質ゲート: SKIP。ruff / pytest 手動実行で通過。
 - 実装・テスト・確認・コミットを 1 件ずつ実施。
 
-## アクター名の位置 DoD（plan-execute 2025-02-09）
+## ループ DoD（plan-execute 2025-02-09、影響度順 1件目）
 
-- **アクター名の位置**: アクター名をスイムレーンの上下中央に配置。
-  - `_draw_actor_labels`: 各レーンの中央 Y を `lane_center_y = lane_top + lane_height // 2` で算出し、ボックス高さの半分だけ上にずらして `top = lane_center_y - box_height // 2` で配置。テキストは `vertical_anchor = MSO_ANCHOR.MIDDLE` と `p.alignment = PP_ALIGN.CENTER` でボックス内中央に。
-  - テスト: `test_actor_labels_vertically_centered_in_lane` でレーン中央とシェイプ中央の一致を検証。
-- 品質ゲート: SKIP。ruff / pytest 通過。
-
-## アクター名の四角 DoD（plan-execute 2025-02-09）
-
-- **アクター名の四角**: アクター名を点線から 2pt 離した長方形（四角）内に配置。点線の上下 2pt ずつ離して等間隔。
-  - `_draw_actor_labels`: テキストボックスではなく `add_shape(MSO_SHAPE.ROUNDED_RECTANGLE)` で長方形を描画。top = lane_top + 2pt, height = lane_height - 4pt, left = left_margin + 2pt, width = left_label_width - 4pt。テキストは上下中央・左右中央のまま。
-  - テスト: `test_actor_labels_in_box_2pt_from_dotted_line` でボックス上端・高さが 2pt 仕様であることを検証。
-- 品質ゲート: SKIP。ruff / pytest 通過。
-
-## 人のタスクの接続 DoD（plan-execute 2025-02-09）
-
-- **人のタスクの接続**: 孤立した人のタスクを検出する検証を追加（YAML 検証で確認可能）。
-  - `yaml_loader.validate_no_isolated_human_tasks(actors, nodes)`: タスクで next が空のもの・誰からも next で参照されていないタスクを検出し、メッセージリストで返す。start/end は対象外。
-  - CLI `from-yaml` 実行時に検証を実行し、問題があれば stderr に出力。
-  - テスト: `test_validate_no_isolated_human_tasks_ok`, `test_validate_no_isolated_human_tasks_reports_isolated` を追加。
-- 品質ゲート: SKIP。ruff / pytest 通過。
-
-## ループ DoD（plan-execute 2025-02-09）
-
-- **ループ**: 分岐してスタートに戻るフローを YAML の `next` で開始ノード ID を指定可能に。PPTX でループの矢印を描画。
-  - `_assign_columns`: 閉路のみのグラフでは type=start を列0でシード。スタートに戻る辺でスタートの列を上書きしない。
-  - 既存のエッジ描画で同一スライド内の (back, start) も矢印として描画される。
+- **ループ**: YAML の `next` で開始ノードの ID を参照可能（既存のまま）。レイアウトで開始ノードを常に列0に固定し、タスク→開始の矢印が左向きに描画されるようにした。
+  - `yaml_loader._assign_columns`: 列割り当て後に `type == "start"` のノードの column を 0 に強制。
+  - エッジは既存の next 収集で (task_id, start_id) が含まれるため、矢印はそのまま描画される。
   - スキーマ: docs/yaml-schema.md にループの説明を追記。
-  - テスト: test_loop_assigns_columns_and_edge, test_loop_drawn_in_pptx を追加。
-- 品質ゲート: SKIP。ruff / pytest 通過。
-
-## 成果物 DoD（plan-execute 2025-02-09）
-
-- **成果物**: YAML で type: artifact を指定可能に。PPTX ではフローチャートのデータ図形（FLOWCHART_DATA）で描画し、中に成果物名（label）を記載。
-  - yaml_loader: type に "artifact" を許可。
-  - yaml2pptx: artifact のとき MSO_SHAPE.FLOWCHART_DATA で描画、テキストは node.label。
-  - スキーマ・テスト: docs/yaml-schema.md に type: artifact を追記。test_load_accepts_artifact_type, test_artifact_drawn_as_flowchart_data を追加。
-- 品質ゲート: SKIP。ruff / pytest 通過。
-
-## システム接続 DoD（plan-execute 2025-02-09）
-
-- **システム接続**: 最後のアクターをシステムレーンとし、磁気ディスク図形を 1 レーン 1 つ描画。人タスクに `request_to` / `response_from` で点線接続（人側○、サービス側矢印）。
-  - YAML: ノードに `request_to: true`, `response_from: true` を指定可能。システムレーンは最後のアクター。
-  - yaml_loader: ProcessNode に request_to_system, response_from_system を追加。ProcessLayout に system_lane_indices を追加。
-  - yaml2pptx: システムレーンに FLOWCHART_MAGNETIC_DISK を 1 つ描画。点線コネクタで人側 oval・サービス側 triangle。列ずれ時は ELBOW。
-  - スキーマ・テスト: test_system_connection_draws_magnetic_disk_and_dashed を追加。
-- 品質ゲート: SKIP。ruff / pytest 通過。
+  - テスト: `test_loop_start_at_column_zero_and_edge_present` を追加。
+- 品質ゲート: SKIP。ruff / pytest 通過。実装・テスト・確認・コミット済み。
