@@ -40,18 +40,21 @@
 
 ## Docker Compose DoD（plan-execute 2025-02-08）
 
-- **Docker Compose**: 指定の **src** に変換前（YAML 等）を置き、`docker compose run convert` で変換し、変換後（PPTX 等）が **gen** に出力される構成を追加。
-  - `Dockerfile`: Python 3.12 + uv、`scripts/docker-entrypoint.sh` で src 内の .yaml/.yml を gen に .pptx 出力。
-  - `docker-compose.yml`: サービス名 `convert`、ボリューム `./src:/src`, `./gen:/gen`。
-  - `src/`, `gen/` を .gitkeep で作成。README に Docker の使い方を追記。
+- **Docker Compose**: 指定の **input** に変換前（YAML 等）を置き、`docker compose run convert` で変換し、変換後（PPTX 等）が **output** に出力される構成を追加。
+  - `Dockerfile`: Python 3.12 + uv、`scripts/docker-entrypoint.sh` で input 内の .yaml/.yml を output に .pptx 出力。
+  - `docker-compose.yml`: サービス名 `convert`、ボリューム `./input:/input`, `./output:/output`。
+  - `input/`, `output/` を .gitkeep で作成。README に Docker の使い方を追記。
 - Phase 1 完了: 全 DoD 達成（Docker Compose 含む）。
 - Phase 2 完了: 品質ゲートは llm/codex 未使用のためスキップ。ruff / pytest 手動実行で通過。コミット作成済み。
 - Phase 3 完了: Codex 未使用のためセルフレビューのみ。修正不要と判断。
 - Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
 
-## plan-execute 2025-02-08（品質ゲート SKIP）
+## 入出力ディレクトリ名 input/output（plan-execute 2025-02-08）
 
-- Phase 1: 実装は作業ツリーにあり DoD 達成済み。drawio_to_pptx 削除・process_to_pptx 追加・YAML 対応をステージング。
-- Phase 2 完了: 品質ゲートは .llm/configs 未設定のため SKIP。`uv run ruff check .` / `uv run pytest` 手動実行で全通過。実装コミット済み (feat: YAML 駆動の業務プロセス図 → 編集可能 PPTX)。
-- Phase 3 完了: セルフレビューのみ（Codex 未使用）。修正不要と判断。
-- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
+- **DoD**: 変換前を **input**、変換後を **output** に統一。従来の src/gen を廃止。
+  - `docker-compose.yml`: ボリューム `./input:/input`, `./output:/output`、環境変数 `INPUT_DIR`/`OUTPUT_DIR`。
+  - `Dockerfile`: `ENV INPUT_DIR=/input OUTPUT_DIR=/output`。
+  - `scripts/docker-entrypoint.sh`: `INPUT_DIR`/`OUTPUT_DIR` を参照。
+  - `README.md`: 記載を input/output に変更。
+  - `input/`, `output/` を .gitkeep で作成。`src/`, `gen/` を削除。
+- Phase 1 完了: 全 DoD 達成（入出力ディレクトリ名 input/output 対応済み）。

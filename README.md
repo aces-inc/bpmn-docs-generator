@@ -9,18 +9,18 @@
 
 ## Docker Compose（YAML ビルド）
 
-Docker のみで変換する場合は、**src** に YAML を置き、`docker compose run` で変換すると **gen** に PPTX が出力されます。
+Docker のみで変換する場合は、**input** に YAML を置き、`docker compose run` で変換すると **output** に PPTX が出力されます。
 
 ```bash
 # 初回のみイメージビルド
 docker compose build
 
-# src/ に YAML を置いて実行（例: src/process.yaml → gen/process.pptx）
+# input/ に YAML を置いて実行（例: input/process.yaml → output/process.pptx）
 docker compose run convert
 ```
 
-- **入力**: `src/` フォルダに変換前のファイル（.yaml / .yml）を置く
-- **出力**: `gen/` フォルダに変換後の .pptx が出力される
+- **入力**: `input/` フォルダに変換前のファイル（.yaml / .yml）を置く
+- **出力**: `output/` フォルダに変換後の .pptx が出力される
 - 必要に応じて `docker-compose.yml` にサービスを追加し、並列実行なども可能
 
 ## セットアップ

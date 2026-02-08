@@ -48,6 +48,7 @@ YAML で定義した業務プロセス（BPMN 風・スイムレーン）を、�
 - [x] **プレビュー**: 出力の見た目を確認する手段がある（プレビュー画像、スライド/図形一覧表示、または手順の明記のいずれか）
 - [x] **名前の整理**: XML から .drawio / PPTX の両方に変換する処理の名前を、実態に合わせて変更している
 - [x] **Docker Compose**: 指定の **input** に変換前（YAML 等）を置き、`docker compose run` で変換し、変換後（PPTX 等）が **output** フォルダに出力される `docker-compose` 設定があり、必要に応じてコンテナを増やせる状態である
+- [x] **入出力ディレクトリ名（input / output）**: 変換前ディレクトリを **input**、変換後を **output** として用意し、Docker・CLI・README 等で一貫して使用している（従来の src/gen からの変更を実施済みであること）
 
 ## Assumptions
 

@@ -15,6 +15,6 @@ COPY . .
 RUN uv sync --frozen --no-dev \
     && chmod +x /app/scripts/docker-entrypoint.sh
 
-# Default: convert all YAML in /src to /gen
-ENV SRC_DIR=/src GEN_DIR=/gen
+# Default: convert all YAML in /input to /output
+ENV INPUT_DIR=/input OUTPUT_DIR=/output
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
