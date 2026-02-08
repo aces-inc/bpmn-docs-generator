@@ -70,3 +70,6 @@
 - **タスク文字の折り返し**: `text_frame.word_wrap = False` を設定。明示的改行以外は 1 行表示。
 - **タスク文字色**: `p.font.color.rgb = RGBColor(0x25, 0x25, 0x25)` で視認可能な濃いグレーに設定。
 - Phase 1 完了: 全 DoD 達成（矢印・タスク表示 5 項目対応済み）。
+- Phase 2 完了: 品質ゲート SKIP（.llm/codex 未使用）。ruff / pytest 手動実行で通過。コミット作成済み。
+- Phase 3 完了: セルフレビュー。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
