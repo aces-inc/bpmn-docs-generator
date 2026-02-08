@@ -262,3 +262,38 @@ def test_validate_no_isolated_human_tasks_reports_isolated() -> None:
     assert len(issues) >= 1
     assert "接続先(next)がありません" in " ".join(issues)
     assert "接続する矢印がありません" in " ".join(issues)
+
+
+LOOP_YAML = """
+actors: [A]
+nodes:
+  - id: 1
+    type: start
+    actor: 0
+    label: 開始
+    next: [2]
+  - id: 2
+    type: task
+    actor: 0
+    label: 処理
+    next: [3]
+  - id: 3
+    type: task
+    actor: 0
+    label: 判定
+    next: [1]
+"""
+
+
+def test_loop_assigns_columns_and_edge(tmp_path: Path) -> None:
+    """ループ（スタートに戻る）が YAML で定義でき、列割り当てとエッジが正しい（DoD: ループ）。"""
+    p = tmp_path / "loop.yaml"
+    p.write_text(LOOP_YAML.strip(), encoding="utf-8")
+    actors, nodes = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    id_to_node = {n.id: n for n in nodes}
+    start = id_to_node[1]
+    back = id_to_node[3]
+    assert start.column == 0, "スタートは列0のまま"
+    assert back.column >= 1, "スタートに戻るノードは列1以上"
+    assert (3, 1) in layout.edges or (back.id, start.id) in layout.edges, "ループの矢印がエッジに含まれる"

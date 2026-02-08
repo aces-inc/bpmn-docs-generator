@@ -183,3 +183,12 @@
   - CLI `from-yaml` 実行時に検証を実行し、問題があれば stderr に出力。
   - テスト: `test_validate_no_isolated_human_tasks_ok`, `test_validate_no_isolated_human_tasks_reports_isolated` を追加。
 - 品質ゲート: SKIP。ruff / pytest 通過。
+
+## ループ DoD（plan-execute 2025-02-09）
+
+- **ループ**: 分岐してスタートに戻るフローを YAML の `next` で開始ノード ID を指定可能に。PPTX でループの矢印を描画。
+  - `_assign_columns`: 閉路のみのグラフでは type=start を列0でシード。スタートに戻る辺でスタートの列を上書きしない。
+  - 既存のエッジ描画で同一スライド内の (back, start) も矢印として描画される。
+  - スキーマ: docs/yaml-schema.md にループの説明を追記。
+  - テスト: test_loop_assigns_columns_and_edge, test_loop_drawn_in_pptx を追加。
+- 品質ゲート: SKIP。ruff / pytest 通過。

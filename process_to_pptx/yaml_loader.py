@@ -247,12 +247,20 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
     for node in nodes:
         node.column = -1
 
-    # 入次数0のノードを列0にし、BFS のキューに入れる
+    # 入次数0のノードを列0にし、BFS のキューに入れる。ループ時は type=start をシードにする
     queue: deque[ProcessNode] = deque()
     for node in nodes:
         if in_degree[node.id] == 0:
             node.column = 0
             queue.append(node)
+    if not queue:
+        # 閉路のみのグラフ（ループ）: スタートノードを列0でシード
+        for node in nodes:
+            if node.type == "start":
+                node.column = 0
+                in_degree[node.id] = 0
+                queue.append(node)
+                break
 
     while queue:
         n = queue.popleft()
@@ -261,7 +269,10 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
             next_node = id_to_node.get(to_id)
             if not next_node:
                 continue
-            # 分岐先も単一 next も同じ: 次の列は c+1。合流点は複数回更新で max になる
+            # ループでスタートに戻る場合はスタートの列0を維持（DoD: ループ）
+            if next_node.type == "start" and next_node.column == 0:
+                in_degree[next_node.id] -= 1
+                continue
             next_node.column = max(next_node.column, c + 1)
             in_degree[next_node.id] -= 1
             if in_degree[next_node.id] == 0:

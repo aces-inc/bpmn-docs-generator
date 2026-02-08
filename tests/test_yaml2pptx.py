@@ -6,7 +6,32 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx import Presentation
 
 from process_to_pptx import yaml2pptx
-from process_to_pptx.yaml_loader import EMU_PER_PT, load_process_yaml, compute_layout
+from process_to_pptx.yaml_loader import (
+    EMU_PER_PT,
+    load_process_yaml,
+    compute_layout,
+)
+
+# ループ用 YAML（スタートに戻る）
+SAMPLE_YAML_LOOP = """
+actors: [A]
+nodes:
+  - id: 1
+    type: start
+    actor: 0
+    label: 開始
+    next: [2]
+  - id: 2
+    type: task
+    actor: 0
+    label: 処理
+    next: [3]
+  - id: 3
+    type: task
+    actor: 0
+    label: 戻る
+    next: [1]
+"""
 
 
 SAMPLE_YAML = """
@@ -256,3 +281,14 @@ def test_actor_labels_in_box_2pt_from_dotted_line(tmp_path: Path) -> None:
             found = True
             break
         assert found, f"アクター名 {name} のシェイプが見つからない"
+
+
+def test_loop_drawn_in_pptx(tmp_path: Path) -> None:
+    """ループ（スタートに戻る）が PPTX 上で矢印として描画される（DoD: ループ）。"""
+    yaml_path = tmp_path / "loop.yaml"
+    yaml_path.write_text(SAMPLE_YAML_LOOP.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    n = yaml2pptx.yaml_to_pptx(yaml_path, out)
+    assert out.exists()
+    # アクター1 + ノード3 + エッジ3本(1→2, 2→3, 3→1)
+    assert n >= 7, "ループの3本の矢印が描画されている"
