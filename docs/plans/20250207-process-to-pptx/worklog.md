@@ -45,3 +45,6 @@
   - `docker-compose.yml`: サービス名 `convert`、ボリューム `./src:/src`, `./gen:/gen`。
   - `src/`, `gen/` を .gitkeep で作成。README に Docker の使い方を追記。
 - Phase 1 完了: 全 DoD 達成（Docker Compose 含む）。
+- Phase 2 完了: 品質ゲートは llm/codex 未使用のためスキップ。ruff / pytest 手動実行で通過。コミット作成済み。
+- Phase 3 完了: Codex 未使用のためセルフレビューのみ。修正不要と判断。
+- Phase 4: リモート未設定のため PR は未作成。main にコミット済み。
