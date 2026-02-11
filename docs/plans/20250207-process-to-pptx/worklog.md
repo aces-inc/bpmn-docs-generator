@@ -198,3 +198,11 @@
   - yaml2pptx: artifact ノードを MSO_SHAPE.FLOWCHART_DATA で描画。
   - docs/yaml-schema.md: type に artifact、成果物の説明を追記。
   - テスト: test_load_accepts_artifact_type、test_artifact_drawn_as_flowchart_data を追加。
+
+## process-yaml SKILL 更新（plan-execute 2025-02-11）
+
+- **process.yaml の書き方変更に伴う SKILL 更新**: `type: artifact`（成果物）を追加。ノードのキー表・レイアウトの考え方・良い書き方のコツに成果物を追記し、「成果物の例」セクションを追加。
+
+## システム接続 DoD（未実装・次回）
+
+- **システム接続** DoD は YAML スキーマ拡張（システムレーン指定・リクエスト/レスポンス接続）と描画（磁気ディスク図形・点線・elbow）の影響が大きいため、今回の plan-execute では未実装。次回に順番に実装する。
