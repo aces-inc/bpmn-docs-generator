@@ -207,6 +207,43 @@ nodes:
     assert layout.edge_labels.get((1, 3)) == "No"
 
 
+def test_load_service_and_system_edges(tmp_path: Path) -> None:
+    """type: service と request_to / response_from を読み込み、layout.system_edges に反映される。"""
+    yaml_text = """
+actors: [人, システム]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 依頼
+    next: [2]
+    request_to: [svc]
+  - id: 2
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+    response_from: [svc]
+  - id: svc
+    type: service
+    actor: 1
+    label: API
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    svc = next(n for n in nodes if n.type == "service")
+    assert svc.id == "svc"
+    assert svc.label == "API"
+    task1 = next(n for n in nodes if n.id == 1)
+    assert task1.request_to == ["svc"]
+    task2 = next(n for n in nodes if n.id == 2)
+    assert task2.response_from == ["svc"]
+    layout = compute_layout(["人", "システム"], nodes)
+    assert (1, "svc", "request") in layout.system_edges
+    assert ("svc", 2, "response") in layout.system_edges
+
+
 def test_load_accepts_start_end_types(tmp_path: Path) -> None:
     """type: start / type: end を読み込める。"""
     yaml_text = """

@@ -88,9 +88,7 @@ nodes:
     actor: 1
     label: 成約?
     gateway_type: exclusive
-    next:
-      - { id: 13, label: "見送り" }
-      - { id: 14, label: "申込" }
+    next: [{ id: 13, label: "No" }, { id: 14, label: "Yes" }]
   - id: 13
     type: task
     actor: 0
@@ -123,11 +121,16 @@ nodes:
     actor: 1
     label: 受注登録依頼
     next: [18]
+    request_to: [sf-svc]
   - id: 18
     type: task
     actor: 3
     label: 受注登録
     next: [19]
+  - id: sf-svc
+    type: service
+    actor: 3
+    label: Salesforce
 
   # ----- デリバリ手続き -----
   - id: 19

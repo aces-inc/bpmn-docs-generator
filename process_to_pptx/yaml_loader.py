@@ -18,14 +18,16 @@ EMU_PER_PT = EMU_PER_INCH // 72
 MIN_TASK_SIDE_EMU = int(0.25 * EMU_PER_INCH)
 # スライド左右余白の最小（DoD: 10pt 以上）
 SLIDE_MARGIN_MIN_EMU = 10 * EMU_PER_PT
+# アクター枠の右端と最初のタスク列の間の余白（DoD: 10pt）
+TASK_AREA_LEFT_GAP_EMU = 10 * EMU_PER_PT
 
 
 @dataclass
 class ProcessNode:
-    """1 ノード（タスク・分岐・スタート・終了）。"""
+    """1 ノード（タスク・分岐・スタート・終了・成果物・サービス）。"""
 
     id: str | int
-    type: str  # "task" | "gateway" | "start" | "end"
+    type: str  # "task" | "gateway" | "start" | "end" | "artifact" | "service"
     actor_index: int
     label: str
     next_ids: list[str | int]
@@ -33,6 +35,10 @@ class ProcessNode:
     next_labels: dict[str | int, str] = field(default_factory=dict)
     # gateway のときのみ: "exclusive"（条件分岐・菱形に✕）| "parallel"（並行・菱形に＋）
     gateway_type: str = "exclusive"
+    # システム接続: 人タスクからサービスへのリクエスト先ノード ID のリスト
+    request_to: list[str | int] = field(default_factory=list)
+    # システム接続: 人タスクがレスポンスを受け取るサービスノード ID のリスト
+    response_from: list[str | int] = field(default_factory=list)
     # レイアウト後に設定
     column: int = 0
     slide_index: int = 0
@@ -66,6 +72,8 @@ class ProcessLayout:
     edges: list[tuple[str | int, str | int]] = field(default_factory=list)  # (from_id, to_id)
     # 分岐矢印のラベル: (from_id, to_id) -> 表示テキスト
     edge_labels: dict[tuple[str | int, str | int], str] = field(default_factory=dict)
+    # システム接続: (from_id, to_id, "request"|"response")。request=人→サービス、response=サービス→人
+    system_edges: list[tuple[str | int, str | int, str]] = field(default_factory=list)
     num_slides: int = 1
 
     def __post_init__(self) -> None:
@@ -74,7 +82,8 @@ class ProcessLayout:
 
     @property
     def content_width(self) -> int:
-        return self.slide_width - self.left_margin - self.left_label_width - self.right_margin
+        # アクター枠とタスク領域の間の 10pt 余白を含める
+        return self.slide_width - self.left_margin - self.left_label_width - TASK_AREA_LEFT_GAP_EMU - self.right_margin
 
     @property
     def max_cols_per_slide(self) -> int:
@@ -153,7 +162,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             continue
         nid = _normalize_id(nid)
         typ = (item.get("type") or "task").lower()
-        if typ not in ("task", "gateway", "start", "end", "artifact"):
+        if typ not in ("task", "gateway", "start", "end", "artifact", "service"):
             typ = "task"
         actor = item.get("actor", 0)
         actor_index = _resolve_actor_index(actor, actors)
@@ -181,6 +190,13 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             gt = (item.get("gateway_type") or "exclusive").lower()
             gateway_type = "parallel" if gt == "parallel" else "exclusive"
 
+        request_to: list[str | int] = []
+        for rid in item.get("request_to") or []:
+            request_to.append(_normalize_id(rid))
+        response_from: list[str | int] = []
+        for rid in item.get("response_from") or []:
+            response_from.append(_normalize_id(rid))
+
         nodes.append(
             ProcessNode(
                 id=nid,
@@ -190,6 +206,8 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
                 next_ids=next_ids,
                 next_labels=next_labels,
                 gateway_type=gateway_type,
+                request_to=request_to,
+                response_from=response_from,
             )
         )
 
@@ -220,18 +238,26 @@ def find_isolated_flow_nodes(nodes: list[ProcessNode]) -> list[str | int]:
     return isolated
 
 
-def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
+def _assign_columns(
+    nodes: list[ProcessNode],
+    id_to_node: dict,
+    extra_edges: list[tuple[str | int, str | int]] | None = None,
+) -> None:
     """
     フロー順で列番号を付与。分岐発生時は「分岐前の列＋分岐先用の1列」とし、
     分岐先のノードは同一列に配置し得るようにする（横に間延びしない）。
     入次数0から BFS で列を伝播し、複数 predecessor の場合は最大列+1 を採用。
+    extra_edges はシステム接続など next 以外の辺（列計算用）。
     """
-    # 入次数を計算（next の逆方向）
+    # 入次数を計算（next の逆方向 + extra_edges）
     in_degree: dict[str | int, int] = {n.id: 0 for n in nodes}
     for node in nodes:
         for to_id in node.next_ids:
             if to_id in id_to_node:
                 in_degree[to_id] = in_degree.get(to_id, 0) + 1
+    for from_id, to_id in extra_edges or []:
+        if to_id in id_to_node:
+            in_degree[to_id] = in_degree.get(to_id, 0) + 1
 
     # 列は未割り当てを -1 で表す
     for node in nodes:
@@ -244,6 +270,11 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
             node.column = 0
             queue.append(node)
 
+    # extra_edges の from -> to も列伝播に使う（to の列 = from + 1）
+    out_extra: dict[str | int, list[str | int]] = defaultdict(list)
+    for from_id, to_id in extra_edges or []:
+        out_extra[from_id].append(to_id)
+
     while queue:
         n = queue.popleft()
         c = n.column
@@ -252,6 +283,14 @@ def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
             if not next_node:
                 continue
             # 分岐先も単一 next も同じ: 次の列は c+1。合流点は複数回更新で max になる
+            next_node.column = max(next_node.column, c + 1)
+            in_degree[next_node.id] -= 1
+            if in_degree[next_node.id] == 0:
+                queue.append(next_node)
+        for to_id in out_extra.get(n.id, []):
+            next_node = id_to_node.get(to_id)
+            if not next_node:
+                continue
             next_node.column = max(next_node.column, c + 1)
             in_degree[next_node.id] -= 1
             if in_degree[next_node.id] == 0:
@@ -290,7 +329,16 @@ def compute_layout(
     layout.gap = layout.task_side
 
     id_to_node = {n.id: n for n in nodes}
-    _assign_columns(nodes, id_to_node)
+    # システム接続を列計算に含める（サービスノードに列を付与）
+    extra_edges: list[tuple[str | int, str | int]] = []
+    for n in nodes:
+        for to_id in n.request_to:
+            if to_id in id_to_node:
+                extra_edges.append((n.id, to_id))
+        for from_id in n.response_from:
+            if from_id in id_to_node:
+                extra_edges.append((from_id, n.id))
+    _assign_columns(nodes, id_to_node, extra_edges)
 
     # 仮の max_cols_per_slide でスライド・列を割り当て
     unit = layout.task_side + layout.gap
@@ -339,13 +387,22 @@ def compute_layout(
                 lbl = node.next_labels.get(to_id)
                 if lbl:
                     layout.edge_labels[(node.id, to_id)] = lbl
+    # システム接続エッジ（request / response）
+    for n in nodes:
+        for to_id in n.request_to:
+            if to_id in id_to_node:
+                layout.system_edges.append((n.id, to_id, "request"))
+        for from_id in n.response_from:
+            if from_id in id_to_node:
+                layout.system_edges.append((from_id, n.id, "response"))
 
     # 各ノードの (left, top, width, height) を EMU で計算（スライド内の座標）
+    # アクター枠と最初のタスクの間に 10pt 余白（DoD）
     for node in nodes:
         lane = node.actor_index
         col = node.col_in_slide
 
-        left = layout.left_margin + layout.left_label_width + col * (layout.task_side + layout.gap)
+        left = layout.left_margin + layout.left_label_width + TASK_AREA_LEFT_GAP_EMU + col * (layout.task_side + layout.gap)
         top = layout.content_top_offset + lane * layout.lane_height + (
             layout.lane_height - layout.task_side
         ) // 2
@@ -371,7 +428,7 @@ def compute_layout(
         n = len(group)
         row_height = zone_height // n
         remainder = zone_height % n
-        left = layout.left_margin + layout.left_label_width + col * (layout.task_side + layout.gap)
+        left = layout.left_margin + layout.left_label_width + TASK_AREA_LEFT_GAP_EMU + col * (layout.task_side + layout.gap)
         # 列幅は1タスク時と同じ（task_side）。高さのみ分割。
         width = layout.task_side
         offset = 0

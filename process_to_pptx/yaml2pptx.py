@@ -18,13 +18,39 @@ from .yaml_loader import (
 
 
 def _add_arrow_to_connector(connector) -> None:
-    """コネクタの終端（接続先側）に矢印を付ける。OOXML では tailEnd が線の終点（end）、headEnd が始点。"""
+    """コネクタの終端（接続先側）に矢印を付ける。headEnd が end_connect 側。"""
     line_elem = connector.line._get_or_add_ln()
     line_elem.append(
         parse_xml(
-            '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+            '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
         )
     )
+
+
+def _set_connector_dotted(connector) -> None:
+    """コネクタを点線にする。"""
+    ln = connector.line._get_or_add_ln()
+    dash = parse_xml(
+        '<a:prstDash xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" val="dot"/>'
+    )
+    ln.append(dash)
+
+
+def _set_connector_ends(connector, tail_oval: bool = False, head_arrow: bool = False) -> None:
+    """コネクタの端点を設定。tail=始点（begin_connect）、head=終点（end_connect）。"""
+    ln = connector.line._get_or_add_ln()
+    if tail_oval:
+        ln.append(
+            parse_xml(
+                '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
+            )
+        )
+    if head_arrow:
+        ln.append(
+            parse_xml(
+                '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+            )
+        )
 
 
 # DoD: アクター名の四角 — 点線から 2pt 離して長方形、等間隔
@@ -89,52 +115,48 @@ CONNECTION_SITE_RIGHT = 3
 
 
 def _connection_site_from(from_node, to_node) -> int:
-    """始点（from）側の接続辺。DoD: 同レーンまたは下は右、上のレーンへは上から出す。"""
+    """始点（from）側の接続辺: 次タスクが同レーンまたは下は右、上は上（DoD）。"""
     from_actor = from_node.actor_index
     to_actor = to_node.actor_index
-    same_col = from_node.col_in_slide == to_node.col_in_slide
-    # 次のタスクが上のレーン → 上辺中央から出す
+    # 次のタスクが上のレーン → 上から出す
     if to_actor < from_actor:
         return CONNECTION_SITE_TOP
-    # 下レーンかつ同列 → 下から出す
-    if same_col and to_actor > from_actor:
-        return CONNECTION_SITE_BOTTOM
-    # 同レーンまたは下のレーンで次の列 → 右から出す
+    # 同レーンまたは下のレーン → 右から出す
     return CONNECTION_SITE_RIGHT
 
 
 def _connection_site_to(from_node, to_node) -> int:
-    """終点（to）側の接続辺。DoD: 同レーンからは左、上レーンからは上、下レーンからは下で受ける。"""
+    """終点（to）側の接続辺: 前が同レーンは左、上レーンは上、下レーンは下（DoD）。"""
     from_actor = from_node.actor_index
     to_actor = to_node.actor_index
-    same_lane = from_actor == to_actor
-    same_col = from_node.col_in_slide == to_node.col_in_slide
-    # 同レーン同列（縦並び）→ 上に接続
-    if same_lane and same_col:
-        return CONNECTION_SITE_TOP
-    # 上レーンから → 上辺中央で受け
     if from_actor < to_actor:
-        return CONNECTION_SITE_TOP
-    # 下レーンから → 下辺中央で受け
+        return CONNECTION_SITE_TOP  # 前が上レーン → 上で受ける
     if from_actor > to_actor:
-        return CONNECTION_SITE_BOTTOM
-    # 同レーンから（左側から）→ 左辺中央で受け
-    return CONNECTION_SITE_LEFT
+        return CONNECTION_SITE_BOTTOM  # 前が下レーン → 下で受ける
+    return CONNECTION_SITE_LEFT  # 同レーン → 左で受ける
 
 
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
-    """タスク・分岐・スタート・ゴール・成果物の図形を 1 つ描画。成果物はフローチャートのデータ図形。"""
+    """タスク・分岐・スタート・ゴール・成果物・サービスの図形を 1 つ描画。"""
     if node.type == "gateway":
         shape_type = MSO_SHAPE.DIAMOND
     elif node.type in ("start", "end"):
         shape_type = MSO_SHAPE.OVAL  # 正円は幅＝高さの楕円で描画
     elif node.type == "artifact":
         shape_type = MSO_SHAPE.FLOWCHART_DATA  # 成果物＝フローチャートのデータ図形（DoD）
+    elif node.type == "service":
+        shape_type = MSO_SHAPE.FLOWCHART_MAGNETIC_DISK  # システム接続のサービス（DoD）
     else:
         shape_type = MSO_SHAPE.ROUNDED_RECTANGLE
 
     # スタート・ゴールは正円のため、セル内で幅＝高さにし中央に配置
     if node.type in ("start", "end"):
+        side = min(width, height)
+        left = left + (width - side) // 2
+        top = top + (height - side) // 2
+        width = height = side
+    # サービスはタスクと同サイズの磁気ディスク
+    if node.type == "service":
         side = min(width, height)
         left = left + (width - side) // 2
         top = top + (height - side) // 2
@@ -155,11 +177,11 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
     tf.margin_right = 0
     tf.margin_bottom = 0
     p = tf.paragraphs[0]
-    # 分岐図形: 条件分岐は菱形に✕、並行は菱形に＋（DoD）。成果物は label を成果物名として表示。
+    # 分岐図形: 条件分岐は菱形に✕、並行は菱形に＋（DoD）。成果物・サービスは label を表示。
     if node.type == "gateway":
         p.text = "＋" if node.gateway_type == "parallel" else "✕"
     else:
-        p.text = node.label  # task / start / end / artifact
+        p.text = node.label  # task / start / end / artifact / service
     p.font.size = Pt(10)
     p.font.bold = False
     p.font.color.rgb = RGBColor(0, 0, 0)  # 黒文字（DoD: タスク文字の配置）
@@ -289,6 +311,48 @@ def yaml_to_pptx(
                 p.font.color.rgb = RGBColor(0, 0, 0)
                 p.alignment = PP_ALIGN.CENTER
                 total_shapes += 1
+
+        # システム接続: 点線で人⇔サービス。request=人側○・サービス側矢印下、response=下→上点線（DoD）
+        for from_id, to_id, role in layout.system_edges:
+            from_node = next((n for n in layout.nodes if n.id == from_id), None)
+            to_node = next((n for n in layout.nodes if n.id == to_id), None)
+            if not from_node or not to_node:
+                continue
+            if from_node.slide_index != slide_idx or to_node.slide_index != slide_idx:
+                continue
+            from_shp = shape_by_id.get(from_id)
+            to_shp = shape_by_id.get(to_id)
+            if not from_shp or not to_shp:
+                continue
+            same_col = from_node.col_in_slide == to_node.col_in_slide
+            connector_type = MSO_CONNECTOR_TYPE.STRAIGHT if same_col else MSO_CONNECTOR_TYPE.ELBOW
+            conn = slide.shapes.add_connector(connector_type, 0, 0, 0, 0)
+            if role == "request":
+                # 人→サービス: 人側○、サービス側矢印（下向きに接続＝サービスは上辺で受ける）
+                conn.begin_connect(from_shp, CONNECTION_SITE_RIGHT)
+                conn.end_connect(to_shp, CONNECTION_SITE_TOP)
+                _set_connector_ends(conn, tail_oval=True, head_arrow=True)
+            else:
+                # response: サービス→人、下から上へ。サービス下辺→人上辺。サービス側矢印、人側○
+                conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
+                conn.end_connect(to_shp, CONNECTION_SITE_TOP)
+                ln = conn.line._get_or_add_ln()
+                ln.append(
+                    parse_xml(
+                        '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+                    )
+                )
+                ln.append(
+                    parse_xml(
+                        '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
+                    )
+                )
+            _set_connector_dotted(conn)
+            conn.line.fill.solid()
+            conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
+            conn.line.width = Pt(1)
+            conn.shadow.inherit = False
+            total_shapes += 1
 
     prs.save(str(output_path))
     return total_shapes
