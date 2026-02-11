@@ -18,11 +18,11 @@ from .yaml_loader import (
 
 
 def _add_arrow_to_connector(connector) -> None:
-    """コネクタの終端（接続先側）に矢印を付ける。headEnd が end_connect 側。"""
+    """コネクタの終端（接続先＝end_connect 側）に矢印を付ける。DrawingML では tailEnd が線の終点。"""
     line_elem = connector.line._get_or_add_ln()
     line_elem.append(
         parse_xml(
-            '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+            '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
         )
     )
 
@@ -37,18 +37,18 @@ def _set_connector_dotted(connector) -> None:
 
 
 def _set_connector_ends(connector, tail_oval: bool = False, head_arrow: bool = False) -> None:
-    """コネクタの端点を設定。tail=始点（begin_connect）、head=終点（end_connect）。"""
+    """コネクタの端点を設定。DrawingML では headEnd=線の始点、tailEnd=線の終点。tail_oval=始点に○、head_arrow=終点に矢印。"""
     ln = connector.line._get_or_add_ln()
     if tail_oval:
         ln.append(
             parse_xml(
-                '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
+                '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
             )
         )
     if head_arrow:
         ln.append(
             parse_xml(
-                '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+                '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
             )
         )
 
@@ -115,25 +115,24 @@ CONNECTION_SITE_RIGHT = 3
 
 
 def _connection_site_from(from_node, to_node) -> int:
-    """始点（from）側の接続辺: 次タスクが同レーンまたは下は右、上は上（DoD）。"""
-    from_actor = from_node.actor_index
-    to_actor = to_node.actor_index
-    # 次のタスクが上のレーン → 上から出す
-    if to_actor < from_actor:
-        return CONNECTION_SITE_TOP
-    # 同レーンまたは下のレーン → 右から出す
-    return CONNECTION_SITE_RIGHT
+    """始点（from）側の接続辺。基本は右から出る。同列（同じ column）のときだけ上下。"""
+    # 通常エッジは to.column > from.column なので同列にならない。同列はシステム接続などのみ。
+    if from_node.column == to_node.column:
+        if to_node.actor_index < from_node.actor_index:
+            return CONNECTION_SITE_TOP  # 次が上レーン → 上から出す
+        if to_node.actor_index > from_node.actor_index:
+            return CONNECTION_SITE_BOTTOM  # 次が下レーン → 下から出す
+    return CONNECTION_SITE_RIGHT  # 右から出る
 
 
 def _connection_site_to(from_node, to_node) -> int:
-    """終点（to）側の接続辺: 前が同レーンは左、上レーンは上、下レーンは下（DoD）。"""
-    from_actor = from_node.actor_index
-    to_actor = to_node.actor_index
-    if from_actor < to_actor:
-        return CONNECTION_SITE_TOP  # 前が上レーン → 上で受ける
-    if from_actor > to_actor:
-        return CONNECTION_SITE_BOTTOM  # 前が下レーン → 下で受ける
-    return CONNECTION_SITE_LEFT  # 同レーン → 左で受ける
+    """終点（to）側の接続辺。基本は左から入る。同列のときだけ上下で受け。"""
+    if from_node.column == to_node.column:
+        if from_node.actor_index < to_node.actor_index:
+            return CONNECTION_SITE_TOP  # 上から来る → 上で受け
+        if from_node.actor_index > to_node.actor_index:
+            return CONNECTION_SITE_BOTTOM  # 下から来る → 下で受け
+    return CONNECTION_SITE_LEFT  # 左で受ける
 
 
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
@@ -333,18 +332,18 @@ def yaml_to_pptx(
                 conn.end_connect(to_shp, CONNECTION_SITE_TOP)
                 _set_connector_ends(conn, tail_oval=True, head_arrow=True)
             else:
-                # response: サービス→人、下から上へ。サービス下辺→人上辺。サービス側矢印、人側○
+                # response: サービス→人、下から上へ。サービス側矢印、人側○（headEnd=始点=サービス、tailEnd=終点=人）
                 conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
                 conn.end_connect(to_shp, CONNECTION_SITE_TOP)
                 ln = conn.line._get_or_add_ln()
                 ln.append(
                     parse_xml(
-                        '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
+                        '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
                     )
                 )
                 ln.append(
                     parse_xml(
-                        '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
+                        '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
                     )
                 )
             _set_connector_dotted(conn)

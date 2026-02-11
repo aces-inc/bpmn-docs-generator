@@ -123,7 +123,7 @@ def _add_arrow_to_connector(connector) -> None:
     line_elem = connector.line._get_or_add_ln()
     line_elem.append(
         parse_xml(
-            '<a:endLn xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="38100" len="38100"/>'
+            '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
         )
     )
 

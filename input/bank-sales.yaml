@@ -1,0 +1,262 @@
+# 銀行員の営業プロセス（商談化前〜アフターフォロー）と利用システム
+# 変換: uv run process-to-pptx from-yaml input/bank-sales.yaml -o output/bank-sales.pptx
+
+actors:
+  - お客様
+  - 営業
+  - 上司
+  - SFA
+  - M365
+  - ファイルサーバー
+
+nodes:
+  # ----- 開始 -----
+  - id: 0
+    type: start
+    actor: 1
+    label: 開始
+    next: [1]
+
+  # ----- 商談化前 -----
+  - id: 1
+    type: task
+    actor: 1
+    label: リード収集・リスト整備
+    next: [2]
+  - id: 2
+    type: task
+    actor: 3
+    label: リード登録
+    next: [3]
+  - id: 3
+    type: task
+    actor: 1
+    label: アプローチ準備
+    next: [4]
+  - id: 4
+    type: task
+    actor: 4
+    label: メール・スケジュール
+    next: [5]
+
+  # ----- 商談化 -----
+  - id: 5
+    type: task
+    actor: 0
+    label: 初回接触・反応
+    next: [6]
+  - id: 6
+    type: gateway
+    actor: 1
+    label: 商談化?
+    gateway_type: exclusive
+    next: [7, 8]
+  - id: 7
+    type: task
+    actor: 1
+    label: 見送り・継続育成
+    next: [44]
+  - id: 8
+    type: task
+    actor: 1
+    label: 商談化
+    next: [9]
+  - id: 9
+    type: task
+    actor: 3
+    label: 商談登録
+    next: [10]
+  - id: 10
+    type: task
+    actor: 1
+    label: ニーズヒアリング
+    next: [11]
+
+  # ----- 事前稟議 -----
+  - id: 11
+    type: task
+    actor: 1
+    label: 事前稟議書作成
+    next: [12]
+  - id: 12
+    type: task
+    actor: 4
+    label: 稟議書作成・共有
+    next: [13]
+  - id: 13
+    type: task
+    actor: 1
+    label: 事前稟議提出
+    next: [14]
+  - id: 14
+    type: task
+    actor: 5
+    label: 書類保存
+    next: [15]
+  - id: 15
+    type: task
+    actor: 2
+    label: 事前稟議審査
+    next: [16]
+  - id: 16
+    type: gateway
+    actor: 2
+    label: 事前承認?
+    gateway_type: exclusive
+    next: [17, 18]
+  - id: 17
+    type: task
+    actor: 1
+    label: 事前稟議修正・再提出
+    next: [11]
+  - id: 18
+    type: task
+    actor: 1
+    label: 提案書作成
+    next: [19]
+
+  # ----- 提案 -----
+  - id: 19
+    type: task
+    actor: 4
+    label: 提案書・資料作成
+    next: [20]
+  - id: 20
+    type: task
+    actor: 1
+    label: 提案プレゼン
+    next: [21]
+  - id: 21
+    type: task
+    actor: 0
+    label: 提案検討
+    next: [22]
+  - id: 22
+    type: gateway
+    actor: 0
+    label: 受諾?
+    gateway_type: exclusive
+    next: [23, 24]
+  - id: 23
+    type: task
+    actor: 0
+    label: 見送り
+    next: [44]
+  - id: 24
+    type: task
+    actor: 1
+    label: 正式稟議書作成
+    next: [25]
+
+  # ----- 稟議 -----
+  - id: 25
+    type: task
+    actor: 4
+    label: 稟議書作成
+    next: [26]
+  - id: 26
+    type: task
+    actor: 1
+    label: 稟議提出
+    next: [27]
+  - id: 27
+    type: task
+    actor: 5
+    label: 稟議書類保存
+    next: [28]
+  - id: 28
+    type: task
+    actor: 2
+    label: 稟議審査・承認
+    next: [29]
+  - id: 29
+    type: gateway
+    actor: 2
+    label: 稟議承認?
+    gateway_type: exclusive
+    next: [30, 31]
+  - id: 30
+    type: task
+    actor: 1
+    label: 稟議修正・再提出
+    next: [26]
+  - id: 31
+    type: task
+    actor: 1
+    label: 条件交渉
+    next: [32]
+
+  # ----- 詳細な条件交渉 -----
+  - id: 32
+    type: task
+    actor: 0
+    label: 条件交渉
+    next: [33]
+  - id: 33
+    type: task
+    actor: 1
+    label: 契約書ドラフト
+    next: [34]
+  - id: 34
+    type: task
+    actor: 4
+    label: 契約書作成
+    next: [35]
+
+  # ----- 契約 -----
+  - id: 35
+    type: task
+    actor: 1
+    label: 契約締結
+    next: [36]
+  - id: 36
+    type: task
+    actor: 0
+    label: 契約締結
+    next: [37]
+  - id: 37
+    type: task
+    actor: 3
+    label: 成約登録
+    next: [38]
+  - id: 38
+    type: task
+    actor: 1
+    label: 契約書類保管依頼
+    next: [39]
+  - id: 39
+    type: task
+    actor: 5
+    label: 契約書類保存
+    next: [40]
+
+  # ----- 実行 -----
+  - id: 40
+    type: task
+    actor: 1
+    label: 手続・実行
+    next: [41]
+  - id: 41
+    type: task
+    actor: 3
+    label: 実行記録
+    next: [42]
+
+  # ----- アフターフォロー -----
+  - id: 42
+    type: task
+    actor: 1
+    label: アフターフォロー
+    next: [43]
+  - id: 43
+    type: task
+    actor: 3
+    label: フォロー記録
+    next: [44]
+
+  # ----- 終了 -----
+  - id: 44
+    type: end
+    actor: 1
+    label: 終了
+    next: []
