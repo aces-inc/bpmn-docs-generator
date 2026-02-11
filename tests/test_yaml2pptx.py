@@ -78,12 +78,12 @@ def test_actor_label_in_rectangle(tmp_path: Path) -> None:
     yaml2pptx.yaml_to_pptx(yaml_path, out)
     prs = Presentation(str(out))
     slide = prs.slides[0]
-    # アクターラベルは ROUNDED_RECTANGLE で描画されている
+    # アクターラベルは角のある長方形（角丸ではない）で描画される（DoD）
     rects = [
         s for s in slide.shapes
-        if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.ROUNDED_RECTANGLE
+        if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.RECTANGLE
     ]
-    assert len(rects) >= 2, "アクター名は長方形（角丸四角）で描画される"
+    assert len(rects) >= 2, "アクター名は長方形（角のある四角）で描画される"
 
 
 SAMPLE_YAML_START_END = """
