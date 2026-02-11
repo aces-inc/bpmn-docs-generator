@@ -1,40 +1,199 @@
-# 業務プロセス例（YAML スキーマ）
-# 使い方: uv run process-to-pptx from-yaml docs/examples/process.yaml -o output.pptx
+# 商談〜受注〜デリバリ〜運用開始
+# 変換: uv run process-to-pptx from-yaml input/process.yaml -o output/process.pptx
 
 actors:
-  - お客様
-  - IT営業
-  - 社内
-  - 導入・サポート
+  - 顧客
+  - 営業
+  - オペ
+  - Salesforce
+  - M365
+  - デリバリ部
+  - サポート部
 
 nodes:
+  # ----- 開始 -----
+  - id: 0
+    type: start
+    actor: 0
+    label: 開始
+    next: [1]
+
+  # ----- 折衝・課題整理 -----
   - id: 1
     type: task
     actor: 0
-    label: 要件検討
+    label: 要件・課題共有
     next: [2]
   - id: 2
-    type: gateway
-    actor: 0
-    label: 成約?
-    next: [3, 4]
-  - id: 3
     type: task
     actor: 1
-    label: 契約手続き
-    next: [5]
+    label: 折衝・課題整理
+    next: [3]
+  - id: 3
+    type: task
+    actor: 4
+    label: 打合せ・メール
+    next: [4]
+
+  # ----- 商談・見積 -----
   - id: 4
+    type: task
+    actor: 1
+    label: 商談確定
+    next: [5]
+  - id: 5
+    type: task
+    actor: 3
+    label: 商談登録
+    next: [6]
+  - id: 6
+    type: task
+    actor: 1
+    label: 見積確定
+    next: [7]
+  - id: 7
+    type: task
+    actor: 3
+    label: 見積登録
+    next: [71]
+  - id: 71
+    type: artifact
+    actor: 1
+    label: 見積書
+    next: [8]
+  - id: 8
+    type: task
+    actor: 1
+    label: 送付確認
+    next: [9]
+  - id: 9
+    type: task
+    actor: 4
+    label: 書類送付
+    next: [10]
+
+  # ----- 顧客検討・再度商談 -----
+  - id: 10
+    type: task
+    actor: 0
+    label: 見積検討
+    next: [11]
+  - id: 11
+    type: task
+    actor: 1
+    label: 再商談・折衝
+    next: [12]
+  - id: 12
+    type: gateway
+    actor: 1
+    label: 成約?
+    gateway_type: exclusive
+    next:
+      - { id: 13, label: "見送り" }
+      - { id: 14, label: "申込" }
+  - id: 13
     type: task
     actor: 0
     label: 見送り
     next: []
-  - id: 5
+  - id: 14
     type: task
-    actor: 2
-    label: 契約審査
-    next: [6]
-  - id: 6
+    actor: 0
+    label: 申込書提出
+    next: [72]
+  - id: 72
+    type: artifact
+    actor: 1
+    label: 申込書
+    next: [15]
+
+  # ----- 申込受領・受注 -----
+  - id: 15
+    type: task
+    actor: 4
+    label: 申込書受領
+    next: [16]
+  - id: 16
+    type: task
+    actor: 1
+    label: 申込受領確認
+    next: [17]
+  - id: 17
+    type: task
+    actor: 1
+    label: 受注登録依頼
+    next: [18]
+  - id: 18
     type: task
     actor: 3
-    label: キックオフ
+    label: 受注登録
+    next: [19]
+
+  # ----- デリバリ手続き -----
+  - id: 19
+    type: task
+    actor: 2
+    label: デリバリ起票
+    next: [20]
+  - id: 20
+    type: task
+    actor: 5
+    label: デリバリ手続き実施
+    next: [21]
+  - id: 21
+    type: task
+    actor: 3
+    label: 進捗登録
+    next: [22]
+  - id: 22
+    type: task
+    actor: 5
+    label: 書面洗い出し・依頼
+    next: [23]
+  - id: 23
+    type: task
+    actor: 0
+    label: 書面提出
+    next: [73]
+  - id: 73
+    type: artifact
+    actor: 5
+    label: 必要書面
+    next: [24]
+  - id: 24
+    type: task
+    actor: 5
+    label: 書面受領
+    next: [25]
+  - id: 25
+    type: task
+    actor: 5
+    label: デリバリ実施
+    next: [26]
+  - id: 26
+    type: task
+    actor: 5
+    label: デリバリ完了
+    next: [27]
+
+  # ----- 検収・運用開始 -----
+  - id: 27
+    type: task
+    actor: 0
+    label: 検収確認
+    next: [28]
+  - id: 28
+    type: task
+    actor: 1
+    label: 検収登録
+    next: [29]
+  - id: 29
+    type: task
+    actor: 3
+    label: 検収登録
+    next: [30]
+  - id: 30
+    type: end
+    actor: 6
+    label: 運用開始
     next: []

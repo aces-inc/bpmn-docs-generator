@@ -36,15 +36,19 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
     """スライド左側にアクター名を点線から2pt離した長方形内に描画。DoD: アクター名の四角・上下中央。"""
     for i, name in enumerate(layout.actors):
         lane_top = layout.content_top_offset + i * layout.lane_height
-        # 点線の上下 2pt ずつ離して四角があり等間隔（DoD）
-        top = lane_top + ACTOR_BOX_GAP_EMU
+        # 点線の上下 2pt ずつ離して四角があり等間隔（DoD）。四角はスイムレーン高さの縦方向中央に配置
         box_height = layout.lane_height - 2 * ACTOR_BOX_GAP_EMU
+        center_y = lane_top + layout.lane_height // 2
+        top = center_y - box_height // 2
         left = layout.left_margin
         width = layout.left_label_width  # アクター列幅に準拠
         rect = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
             Emu(left), Emu(top), Emu(width), Emu(box_height),
         )
+        # DoD: 長方形の枠線を表示し、四角であることが視認できるようにする
+        rect.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
+        rect.line.width = Pt(0.5)
         tf = rect.text_frame
         tf.clear()
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE  # テキストは上下中央
@@ -211,17 +215,27 @@ def yaml_to_pptx(
             _add_arrow_to_connector(conn)
             total_shapes += 1
 
-            # 分岐矢印のラベル（Yes/No 等）を矢印の近くに表示
+            # 分岐矢印のラベル（Yes/No 等）を矢印の近くに表示（DoD: 矢印の近くにテキストが表示される）
             edge_label = layout.edge_labels.get((from_id, to_id))
+            if not edge_label:
+                try:
+                    if isinstance(from_id, str) and from_id.isdigit() and isinstance(to_id, str) and to_id.isdigit():
+                        edge_label = layout.edge_labels.get((int(from_id), int(to_id)))
+                except (TypeError, ValueError):
+                    pass
             if edge_label:
-                # 矢印の中点付近に小さなテキストボックスを配置
-                mx = (from_shp.left + from_shp.width + to_shp.left) // 2
-                my = (from_shp.top + from_shp.height // 2 + to_shp.top + to_shp.height // 2) // 2
-                label_w = 72000  # 約 2mm
-                label_h = 18000  # 約 0.5mm
-                left = mx - label_w // 2
-                top = my - label_h - 8000  # 矢印の上側に少しオフセット
-                tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(label_w), Emu(label_h))
+                # 矢印の中点付近にテキストボックスを配置（python-pptx の left/width は EMU）
+                from_right = from_shp.left + from_shp.width
+                to_left = to_shp.left
+                mx = (from_right + to_left) // 2
+                from_cy = from_shp.top + from_shp.height // 2
+                to_cy = to_shp.top + to_shp.height // 2
+                my = (from_cy + to_cy) // 2
+                label_w = 91440  # 約 2.5mm（ラベルが切れないよう十分な幅）
+                label_h = 36000  # 約 1mm
+                left_emu = mx - label_w // 2
+                top_emu = my - label_h // 2  # 矢印中点の真上ではなく、ラベルを中点付近に
+                tb = slide.shapes.add_textbox(Emu(left_emu), Emu(top_emu), Emu(label_w), Emu(label_h))
                 tf = tb.text_frame
                 tf.clear()
                 tf.word_wrap = False
