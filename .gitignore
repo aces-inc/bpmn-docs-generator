@@ -4,8 +4,15 @@ __pycache__/
 .venv/
 *.egg-info/
 
+# macOS
+.DS_Store
+
 # Local / generated
 input.xml
 output.drawio
 output.pptx
 gen/*.pptx
+
+# Output (keep only .gitkeep)
+output/*
+!output/.gitkeep
