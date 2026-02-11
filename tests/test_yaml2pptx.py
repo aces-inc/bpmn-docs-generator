@@ -63,11 +63,27 @@ def test_actor_label_vertical_center(tmp_path: Path) -> None:
     yaml2pptx.yaml_to_pptx(yaml_path, out)
     prs = Presentation(str(out))
     slide = prs.slides[0]
-    # アクターラベルはテキストボックスで、vertical_anchor が MIDDLE であること
+    # アクターラベルはテキスト付き図形で、vertical_anchor が MIDDLE であること
     textboxes = [s for s in slide.shapes if s.has_text_frame and s.text.strip()]
     assert len(textboxes) >= 2, "少なくとも2つのアクターラベルがある"
     for tb in textboxes[:2]:  # 最初の2つはアクター名
         assert tb.text_frame.vertical_anchor == MSO_ANCHOR.MIDDLE
+
+
+def test_actor_label_in_rectangle(tmp_path: Path) -> None:
+    """アクター名が点線から2pt離した長方形内にあり、幅はアクター列幅（DoD: アクター名の四角）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML, encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    # アクターラベルは ROUNDED_RECTANGLE で描画されている
+    rects = [
+        s for s in slide.shapes
+        if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.ROUNDED_RECTANGLE
+    ]
+    assert len(rects) >= 2, "アクター名は長方形（角丸四角）で描画される"
 
 
 SAMPLE_YAML_START_END = """

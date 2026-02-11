@@ -178,3 +178,15 @@
   - CLI `from-yaml`: load 後に `find_isolated_flow_nodes` を実行し、孤立 ID があれば stderr に Warning を出力。
   - テスト: `test_find_isolated_flow_nodes_none`, `test_find_isolated_flow_nodes_isolated`, `test_find_isolated_flow_nodes_start_end_ignored` を追加。
 - 実装・テスト・確認・コミットを 1 件ずつ実施。
+
+## アクター名の位置 DoD（plan-execute 2025-02-11、2件目）
+
+- **アクター名の位置**: アクター名をスイムレーン上下中央に配置。
+  - テキストボックスをレーン内で上下中央に配置し、`text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE` でテキストを縦中央に。
+  - テスト: `test_actor_label_vertical_center` で生成 PPTX のアクターラベルに MIDDLE が設定されていることを検証。
+
+## アクター名の四角 DoD（plan-execute 2025-02-11、3件目）
+
+- **アクター名の四角**: 点線から 2pt 離した長方形（ROUNDED_RECTANGLE）内にアクター名を表示。幅は left_label_width、点線の上下 2pt ずつ離して等間隔。テキストは上下中央・横中央。
+  - 定数 ACTOR_BOX_GAP_EMU = 2pt、top = lane_top + 2pt、height = lane_height - 4pt。
+  - テスト: `test_actor_label_in_rectangle` でアクターラベルが ROUNDED_RECTANGLE で描画されることを検証。

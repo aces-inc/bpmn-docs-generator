@@ -13,6 +13,7 @@ from .yaml_loader import (
     ProcessLayout,
     load_process_yaml,
     compute_layout,
+    EMU_PER_PT,
 )
 
 
@@ -26,23 +27,33 @@ def _add_arrow_to_connector(connector) -> None:
     )
 
 
+# DoD: アクター名の四角 — 点線から 2pt 離して長方形、等間隔
+ACTOR_BOX_GAP_PT = 2
+ACTOR_BOX_GAP_EMU = ACTOR_BOX_GAP_PT * EMU_PER_PT
+
+
 def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
-    """スライド左側にアクター名を描画。DoD: アクター名はスイムレーンの上下中央に配置。"""
+    """スライド左側にアクター名を点線から2pt離した長方形内に描画。DoD: アクター名の四角・上下中央。"""
     for i, name in enumerate(layout.actors):
         lane_top = layout.content_top_offset + i * layout.lane_height
-        # テキストボックスをレーン内で上下中央に配置
-        box_height = layout.task_side  # 次の DoD で四角レイアウトに変更するまで同じ高さ
-        top = lane_top + (layout.lane_height - box_height) // 2
-        w = layout.left_label_width - 36000  # 約 1mm マージン（EMU）
-        left = layout.left_margin + 18000
-        tb = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(w), Emu(box_height))
-        tf = tb.text_frame
+        # 点線の上下 2pt ずつ離して四角があり等間隔（DoD）
+        top = lane_top + ACTOR_BOX_GAP_EMU
+        box_height = layout.lane_height - 2 * ACTOR_BOX_GAP_EMU
+        left = layout.left_margin
+        width = layout.left_label_width  # アクター列幅に準拠
+        rect = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Emu(left), Emu(top), Emu(width), Emu(box_height),
+        )
+        tf = rect.text_frame
         tf.clear()
-        tf.vertical_anchor = MSO_ANCHOR.MIDDLE  # DoD: アクター名をスイムレーン上下中央に
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE  # テキストは上下中央
+        tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = name
         p.font.size = Pt(10)
         p.font.bold = True
+        p.alignment = PP_ALIGN.CENTER  # 横方向も中央
 
 
 def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
