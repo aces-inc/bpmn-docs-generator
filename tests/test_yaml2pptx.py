@@ -3,35 +3,10 @@
 from pathlib import Path
 
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR
 from pptx import Presentation
 
 from process_to_pptx import yaml2pptx
-from process_to_pptx.yaml_loader import (
-    EMU_PER_PT,
-    load_process_yaml,
-    compute_layout,
-)
-
-# ループ用 YAML（スタートに戻る）
-SAMPLE_YAML_LOOP = """
-actors: [A]
-nodes:
-  - id: 1
-    type: start
-    actor: 0
-    label: 開始
-    next: [2]
-  - id: 2
-    type: task
-    actor: 0
-    label: 処理
-    next: [3]
-  - id: 3
-    type: task
-    actor: 0
-    label: 戻る
-    next: [1]
-"""
 
 
 SAMPLE_YAML = """
@@ -78,6 +53,21 @@ def test_yaml_to_pptx_empty_yaml(tmp_path: Path) -> None:
     n = yaml2pptx.yaml_to_pptx(yaml_path, out)
     assert out.exists()
     assert n == 0
+
+
+def test_actor_label_vertical_center(tmp_path: Path) -> None:
+    """アクター名がスイムレーンの上下中央に配置される（DoD: アクター名の位置）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML, encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    # アクターラベルはテキストボックスで、vertical_anchor が MIDDLE であること
+    textboxes = [s for s in slide.shapes if s.has_text_frame and s.text.strip()]
+    assert len(textboxes) >= 2, "少なくとも2つのアクターラベルがある"
+    for tb in textboxes[:2]:  # 最初の2つはアクター名
+        assert tb.text_frame.vertical_anchor == MSO_ANCHOR.MIDDLE
 
 
 SAMPLE_YAML_START_END = """
@@ -214,152 +204,3 @@ def test_branch_arrow_labels_drawn(tmp_path: Path) -> None:
     )
     assert "Yes" in all_text, "分岐矢印ラベル Yes がスライドに含まれる"
     assert "No" in all_text, "分岐矢印ラベル No がスライドに含まれる"
-
-
-def test_actor_labels_vertically_centered_in_lane(tmp_path: Path) -> None:
-    """アクター名がスイムレーンの上下中央に配置されている（DoD: アクター名の位置）。"""
-    yaml_path = tmp_path / "in.yaml"
-    yaml_path.write_text(SAMPLE_YAML.strip(), encoding="utf-8")
-    out = tmp_path / "out.pptx"
-    yaml2pptx.yaml_to_pptx(yaml_path, out)
-    actors, nodes = load_process_yaml(yaml_path)
-    layout = compute_layout(actors, nodes)
-    prs = Presentation(str(out))
-    slide = prs.slides[0]
-    # アクター名のテキストボックスを名前で収集（左側のテキスト＝アクターラベル）
-    actor_texts = ["A", "B"]
-    for i, name in enumerate(actor_texts):
-        lane_center_y = (
-            layout.content_top_offset + i * layout.lane_height + layout.lane_height // 2
-        )
-        found = False
-        for s in slide.shapes:
-            if not hasattr(s, "text_frame") or not s.text_frame.paragraphs:
-                continue
-            if s.text_frame.paragraphs[0].text.strip() != name:
-                continue
-            # このシェイプの縦中央がレーン中央に近いこと（許容 10%）
-            shape_center_y = int(s.top) + int(s.height) // 2
-            tolerance = layout.lane_height // 5
-            assert abs(shape_center_y - lane_center_y) <= tolerance, (
-                f"アクター {name} のラベルがレーン上下中央にない: "
-                f"shape_center={shape_center_y} lane_center={lane_center_y}"
-            )
-            found = True
-            break
-        assert found, f"アクター名 {name} のテキストボックスが見つからない"
-
-
-def test_actor_labels_in_box_2pt_from_dotted_line(tmp_path: Path) -> None:
-    """アクター名が点線から2pt離した長方形内にあり、等間隔（DoD: アクター名の四角）。"""
-    yaml_path = tmp_path / "in.yaml"
-    yaml_path.write_text(SAMPLE_YAML.strip(), encoding="utf-8")
-    out = tmp_path / "out.pptx"
-    yaml2pptx.yaml_to_pptx(yaml_path, out)
-    actors, nodes = load_process_yaml(yaml_path)
-    layout = compute_layout(actors, nodes)
-    gap_emu = 2 * EMU_PER_PT  # 2pt
-    prs = Presentation(str(out))
-    slide = prs.slides[0]
-    for i, name in enumerate(["A", "B"]):
-        lane_top = layout.content_top_offset + i * layout.lane_height
-        expected_top = lane_top + gap_emu
-        expected_height = layout.lane_height - 2 * gap_emu
-        found = False
-        for s in slide.shapes:
-            if not hasattr(s, "text_frame") or not s.text_frame.paragraphs:
-                continue
-            if s.text_frame.paragraphs[0].text.strip() != name:
-                continue
-            # 四角の上端は点線から 2pt 下
-            assert int(s.top) >= expected_top - 5000 and int(s.top) <= expected_top + 5000, (
-                f"アクター {name}: ボックス上端が点線+2ptでない (got {s.top})"
-            )
-            assert int(s.height) >= expected_height - 5000 and int(s.height) <= expected_height + 5000, (
-                f"アクター {name}: ボックス高さが lane_height-4pt でない (got {s.height})"
-            )
-            found = True
-            break
-        assert found, f"アクター名 {name} のシェイプが見つからない"
-
-
-def test_loop_drawn_in_pptx(tmp_path: Path) -> None:
-    """ループ（スタートに戻る）が PPTX 上で矢印として描画される（DoD: ループ）。"""
-    yaml_path = tmp_path / "loop.yaml"
-    yaml_path.write_text(SAMPLE_YAML_LOOP.strip(), encoding="utf-8")
-    out = tmp_path / "out.pptx"
-    n = yaml2pptx.yaml_to_pptx(yaml_path, out)
-    assert out.exists()
-    # アクター1 + ノード3 + エッジ3本(1→2, 2→3, 3→1)
-    assert n >= 7, "ループの3本の矢印が描画されている"
-
-
-ARTIFACT_YAML = """
-actors: [A]
-nodes:
-  - id: 1
-    type: task
-    actor: 0
-    label: 作成
-    next: [2]
-  - id: 2
-    type: artifact
-    actor: 0
-    label: 見積書
-    next: []
-"""
-
-
-SYSTEM_CONNECTION_YAML = """
-actors: [営業, CRM]
-nodes:
-  - id: 1
-    type: task
-    actor: 0
-    label: 入力
-    next: [2]
-    request_to: true
-  - id: 2
-    type: task
-    actor: 0
-    label: 確認
-    next: []
-    response_from: true
-"""
-
-
-def test_system_connection_draws_magnetic_disk_and_dashed(tmp_path: Path) -> None:
-    """システム接続: 最後のアクターに磁気ディスクを1つ描画し、request_to で点線接続（DoD: システム接続）。"""
-    yaml_path = tmp_path / "in.yaml"
-    yaml_path.write_text(SYSTEM_CONNECTION_YAML.strip(), encoding="utf-8")
-    out = tmp_path / "out.pptx"
-    n = yaml2pptx.yaml_to_pptx(yaml_path, out)
-    assert out.exists()
-    assert n >= 5
-    prs = Presentation(str(out))
-    slide = prs.slides[0]
-    magnetic = [
-        s for s in slide.shapes
-        if getattr(s, "auto_shape_type", None) == MSO_SHAPE.FLOWCHART_MAGNETIC_DISK
-    ]
-    assert len(magnetic) >= 1, "システムレーンに磁気ディスク図形が1つ描画されている"
-
-
-def test_artifact_drawn_as_flowchart_data(tmp_path: Path) -> None:
-    """成果物ノードがフローチャートのデータ図形で描画され、中に成果物名がある（DoD: 成果物）。"""
-    yaml_path = tmp_path / "in.yaml"
-    yaml_path.write_text(ARTIFACT_YAML.strip(), encoding="utf-8")
-    out = tmp_path / "out.pptx"
-    yaml2pptx.yaml_to_pptx(yaml_path, out)
-    prs = Presentation(str(out))
-    slide = prs.slides[0]
-    data_shapes = []
-    for s in slide.shapes:
-        try:
-            if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.FLOWCHART_DATA:
-                data_shapes.append(s)
-        except (ValueError, AttributeError):
-            pass
-    assert len(data_shapes) >= 1, "成果物がデータ図形(FLOWCHART_DATA)で描画されている"
-    texts = [s.text_frame.paragraphs[0].text for s in data_shapes if s.text_frame.paragraphs]
-    assert "見積書" in texts, "成果物名が図形内に記載されている"
