@@ -33,22 +33,21 @@ ACTOR_BOX_GAP_EMU = ACTOR_BOX_GAP_PT * EMU_PER_PT
 
 
 def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
-    """スライド左側にアクター名を点線から2pt離した長方形内に描画。DoD: アクター名の四角・上下中央。"""
+    """スライド左側にアクター名を点線から2pt離した長方形内に描画。DoD: 角のある四角・塗りつぶしなし・枠線黒・フォント黒・影なし。"""
     for i, name in enumerate(layout.actors):
         lane_top = layout.content_top_offset + i * layout.lane_height
-        # 点線の上下 2pt ずつ離して四角があり等間隔（DoD）。四角はスイムレーン高さの縦方向中央に配置
+        # 点線の上下 2pt ずつ離して四角があり等間隔（DoD）
+        top = lane_top + ACTOR_BOX_GAP_EMU
         box_height = layout.lane_height - 2 * ACTOR_BOX_GAP_EMU
-        center_y = lane_top + layout.lane_height // 2
-        top = center_y - box_height // 2
         left = layout.left_margin
         width = layout.left_label_width  # アクター列幅に準拠
         rect = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE,
+            MSO_SHAPE.RECTANGLE,  # 角のある長方形（角丸ではない）
             Emu(left), Emu(top), Emu(width), Emu(box_height),
         )
-        # DoD: 長方形の枠線を表示し、四角であることが視認できるようにする
-        rect.line.color.rgb = RGBColor(0x37, 0x37, 0x37)
-        rect.line.width = Pt(0.5)
+        rect.fill.background()  # 塗りつぶしなし
+        rect.line.color.rgb = RGBColor(0, 0, 0)  # 枠線黒
+        rect.shadow.inherit = False  # 影なし
         tf = rect.text_frame
         tf.clear()
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE  # テキストは上下中央
@@ -57,11 +56,12 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
         p.text = name
         p.font.size = Pt(10)
         p.font.bold = True
+        p.font.color.rgb = RGBColor(0, 0, 0)  # フォント黒
         p.alignment = PP_ALIGN.CENTER  # 横方向も中央
 
 
 def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
-    """レーン間をグレーの点線で区切る。点線はレーンの左端まで届く。左右は 10pt 余白内（DoD）。"""
+    """レーン間をグレーの点線で区切る。点線はレーンの左端まで届く。影なし（DoD）。"""
     gray = RGBColor(0x80, 0x80, 0x80)
     x1 = layout.left_margin  # スライド左端から 10pt 余白の内側
     x2 = int(layout.slide_width - layout.right_margin)
@@ -72,6 +72,7 @@ def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
         )
         line.line.color.rgb = gray
         line.line.width = Pt(0.5)
+        line.shadow.inherit = False  # 影なし
         # 点線: dashType を設定（a:prstDash）
         ln = line.line._get_or_add_ln()
         dash = parse_xml(
@@ -80,9 +81,45 @@ def _draw_lane_separators(slide, layout: ProcessLayout) -> None:
         ln.append(dash)
 
 
-# 四角形の接続点: 0=上, 1=左, 2=下, 3=右（各辺の中央＝上下中央）
-CONNECTION_SITE_RIGHT = 3
+# 四角形の接続点: 0=上, 1=左, 2=下, 3=右（各辺の中央）
+CONNECTION_SITE_TOP = 0
 CONNECTION_SITE_LEFT = 1
+CONNECTION_SITE_BOTTOM = 2
+CONNECTION_SITE_RIGHT = 3
+
+
+def _connection_site_from(from_node, to_node) -> int:
+    """始点（from）側の接続辺。DoD: 同レーンまたは下は右、上のレーンへは上から出す。"""
+    from_actor = from_node.actor_index
+    to_actor = to_node.actor_index
+    same_col = from_node.col_in_slide == to_node.col_in_slide
+    # 次のタスクが上のレーン → 上辺中央から出す
+    if to_actor < from_actor:
+        return CONNECTION_SITE_TOP
+    # 下レーンかつ同列 → 下から出す
+    if same_col and to_actor > from_actor:
+        return CONNECTION_SITE_BOTTOM
+    # 同レーンまたは下のレーンで次の列 → 右から出す
+    return CONNECTION_SITE_RIGHT
+
+
+def _connection_site_to(from_node, to_node) -> int:
+    """終点（to）側の接続辺。DoD: 同レーンからは左、上レーンからは上、下レーンからは下で受ける。"""
+    from_actor = from_node.actor_index
+    to_actor = to_node.actor_index
+    same_lane = from_actor == to_actor
+    same_col = from_node.col_in_slide == to_node.col_in_slide
+    # 同レーン同列（縦並び）→ 上に接続
+    if same_lane and same_col:
+        return CONNECTION_SITE_TOP
+    # 上レーンから → 上辺中央で受け
+    if from_actor < to_actor:
+        return CONNECTION_SITE_TOP
+    # 下レーンから → 下辺中央で受け
+    if from_actor > to_actor:
+        return CONNECTION_SITE_BOTTOM
+    # 同レーンから（左側から）→ 左辺中央で受け
+    return CONNECTION_SITE_LEFT
 
 
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
@@ -206,43 +243,50 @@ def yaml_to_pptx(
             conn = slide.shapes.add_connector(
                 connector_type, 0, 0, 0, 0
             )
-            # 接続点: タスクの上下中央（右辺中央→左辺中央）
-            conn.begin_connect(from_shp, CONNECTION_SITE_RIGHT)
-            conn.end_connect(to_shp, CONNECTION_SITE_LEFT)
+            # 接続点: 始点は下レーン同列なら下・それ以外は右、終点は同レーン同列なら上・別列なら左（DoD）
+            site_from = _connection_site_from(from_node, to_node)
+            site_to = _connection_site_to(from_node, to_node)
+            conn.begin_connect(from_shp, site_from)
+            conn.end_connect(to_shp, site_to)
             conn.line.fill.solid()
             conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
             conn.line.width = Pt(1)
+            conn.shadow.inherit = False  # 矢印に影を付けない（DoD）
             _add_arrow_to_connector(conn)
             total_shapes += 1
 
-            # 分岐矢印のラベル（Yes/No 等）を矢印の近くに表示（DoD: 矢印の近くにテキストが表示される）
+            # 分岐矢印のラベル（Yes/No 等）を矢印の近くに表示（DoD）
             edge_label = layout.edge_labels.get((from_id, to_id))
-            if not edge_label:
-                try:
-                    if isinstance(from_id, str) and from_id.isdigit() and isinstance(to_id, str) and to_id.isdigit():
-                        edge_label = layout.edge_labels.get((int(from_id), int(to_id)))
-                except (TypeError, ValueError):
-                    pass
             if edge_label:
-                # 矢印の中点付近にテキストボックスを配置（python-pptx の left/width は EMU）
-                from_right = from_shp.left + from_shp.width
-                to_left = to_shp.left
-                mx = (from_right + to_left) // 2
-                from_cy = from_shp.top + from_shp.height // 2
-                to_cy = to_shp.top + to_shp.height // 2
-                my = (from_cy + to_cy) // 2
-                label_w = 91440  # 約 2.5mm（ラベルが切れないよう十分な幅）
-                label_h = 36000  # 約 1mm
-                left_emu = mx - label_w // 2
-                top_emu = my - label_h // 2  # 矢印中点の真上ではなく、ラベルを中点付近に
-                tb = slide.shapes.add_textbox(Emu(left_emu), Emu(top_emu), Emu(label_w), Emu(label_h))
+                # 座標は layout の EMU で計算し、矢印の中点付近にテキストボックスを配置
+                from_pos = layout.node_positions.get(from_id)
+                to_pos = layout.node_positions.get(to_id)
+                if from_pos and to_pos:
+                    fl, ft, fw, fh = from_pos
+                    tl, tt, tw, th = to_pos
+                    # 始点・終点の中心
+                    fx_c = fl + fw // 2
+                    fy_c = ft + fh // 2
+                    tx_c = tl + tw // 2
+                    ty_c = tt + th // 2
+                    mx = (fx_c + tx_c) // 2
+                    my = (fy_c + ty_c) // 2
+                else:
+                    mx = (from_shp.left + from_shp.width // 2 + to_shp.left + to_shp.width // 2) // 2
+                    my = (from_shp.top + from_shp.height // 2 + to_shp.top + to_shp.height // 2) // 2
+                label_w = 360000  # 約 1cm（ラベルが収まる幅）
+                label_h = 120000  # 約 3mm（8pt テキスト用）
+                label_left = mx - label_w // 2
+                label_top = my - label_h - 60000  # 矢印の上側にオフセット
+                tb = slide.shapes.add_textbox(Emu(label_left), Emu(label_top), Emu(label_w), Emu(label_h))
+                tb.shadow.inherit = False
                 tf = tb.text_frame
                 tf.clear()
                 tf.word_wrap = False
                 p = tf.paragraphs[0]
                 p.text = edge_label
                 p.font.size = Pt(8)
-                p.font.color.rgb = RGBColor(0x37, 0x37, 0x37)
+                p.font.color.rgb = RGBColor(0, 0, 0)
                 p.alignment = PP_ALIGN.CENTER
                 total_shapes += 1
 
