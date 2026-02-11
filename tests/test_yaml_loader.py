@@ -237,6 +237,29 @@ nodes:
     assert nodes[2].type == "end"
 
 
+def test_load_accepts_artifact_type(tmp_path: Path) -> None:
+    """type: artifact（成果物）を読み込める。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 作成
+    next: [2]
+  - id: 2
+    type: artifact
+    actor: 0
+    label: 見積書
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    assert nodes[1].type == "artifact"
+    assert nodes[1].label == "見積書"
+
+
 def test_compute_layout(tmp_path: Path) -> None:
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")

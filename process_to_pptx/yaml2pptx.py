@@ -82,11 +82,13 @@ CONNECTION_SITE_LEFT = 1
 
 
 def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
-    """タスク・分岐・スタート・ゴールの図形を 1 つ描画。スタート/ゴールは正円、分岐はひし形、タスクは四角。"""
+    """タスク・分岐・スタート・ゴール・成果物の図形を 1 つ描画。成果物はフローチャートのデータ図形。"""
     if node.type == "gateway":
         shape_type = MSO_SHAPE.DIAMOND
     elif node.type in ("start", "end"):
         shape_type = MSO_SHAPE.OVAL  # 正円は幅＝高さの楕円で描画
+    elif node.type == "artifact":
+        shape_type = MSO_SHAPE.FLOWCHART_DATA  # 成果物＝フローチャートのデータ図形（DoD）
     else:
         shape_type = MSO_SHAPE.ROUNDED_RECTANGLE
 
@@ -112,11 +114,11 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
     tf.margin_right = 0
     tf.margin_bottom = 0
     p = tf.paragraphs[0]
-    # 分岐図形: 条件分岐は菱形に✕、並行は菱形に＋（DoD）
+    # 分岐図形: 条件分岐は菱形に✕、並行は菱形に＋（DoD）。成果物は label を成果物名として表示。
     if node.type == "gateway":
         p.text = "＋" if node.gateway_type == "parallel" else "✕"
     else:
-        p.text = node.label
+        p.text = node.label  # task / start / end / artifact
     p.font.size = Pt(10)
     p.font.bold = False
     p.font.color.rgb = RGBColor(0, 0, 0)  # 黒文字（DoD: タスク文字の配置）

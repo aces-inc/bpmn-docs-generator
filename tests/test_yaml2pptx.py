@@ -177,6 +177,45 @@ def test_gateway_drawn_with_x_or_plus(tmp_path: Path) -> None:
     assert "＋" in diamond_texts, "並行分岐（parallel）は菱形に＋"
 
 
+SAMPLE_YAML_ARTIFACT = """
+actors:
+  - 担当者
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 作成
+    next: [2]
+  - id: 2
+    type: artifact
+    actor: 0
+    label: 見積書
+    next: [3]
+  - id: 3
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+"""
+
+
+def test_artifact_drawn_as_flowchart_data(tmp_path: Path) -> None:
+    """成果物ノードはフローチャートのデータ図形で描画され、中に成果物名が記載される（DoD）。"""
+    yaml_path = tmp_path / "in.yaml"
+    yaml_path.write_text(SAMPLE_YAML_ARTIFACT.strip(), encoding="utf-8")
+    out = tmp_path / "out.pptx"
+    yaml2pptx.yaml_to_pptx(yaml_path, out)
+    prs = Presentation(str(out))
+    slide = prs.slides[0]
+    data_shapes = [
+        s for s in slide.shapes
+        if hasattr(s, "auto_shape_type") and s.auto_shape_type == MSO_SHAPE.FLOWCHART_DATA
+    ]
+    assert len(data_shapes) >= 1, "成果物は FLOWCHART_DATA で描画される"
+    texts = [s.text.strip() for s in data_shapes if s.text.strip()]
+    assert "見積書" in texts, "成果物名がデータ図形内に記載される"
+
+
 SAMPLE_YAML_BRANCH_LABELS = """
 actors:
   - A

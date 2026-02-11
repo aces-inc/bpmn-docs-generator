@@ -190,3 +190,11 @@
 - **アクター名の四角**: 点線から 2pt 離した長方形（ROUNDED_RECTANGLE）内にアクター名を表示。幅は left_label_width、点線の上下 2pt ずつ離して等間隔。テキストは上下中央・横中央。
   - 定数 ACTOR_BOX_GAP_EMU = 2pt、top = lane_top + 2pt、height = lane_height - 4pt。
   - テスト: `test_actor_label_in_rectangle` でアクターラベルが ROUNDED_RECTANGLE で描画されることを検証。
+
+## 成果物 DoD（plan-execute 2025-02-11、4件目）
+
+- **成果物**: YAML で `type: artifact` を指定可能に。PPTX ではフローチャートのデータ図形（FLOWCHART_DATA）で描画し、`label` に成果物名を記載。
+  - yaml_loader: type に "artifact" を追加。find_isolated_flow_nodes の対象に artifact を含める。
+  - yaml2pptx: artifact ノードを MSO_SHAPE.FLOWCHART_DATA で描画。
+  - docs/yaml-schema.md: type に artifact、成果物の説明を追記。
+  - テスト: test_load_accepts_artifact_type、test_artifact_drawn_as_flowchart_data を追加。

@@ -153,7 +153,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             continue
         nid = _normalize_id(nid)
         typ = (item.get("type") or "task").lower()
-        if typ not in ("task", "gateway", "start", "end"):
+        if typ not in ("task", "gateway", "start", "end", "artifact"):
             typ = "task"
         actor = item.get("actor", 0)
         actor_index = _resolve_actor_index(actor, actors)
@@ -212,7 +212,7 @@ def find_isolated_flow_nodes(nodes: list[ProcessNode]) -> list[str | int]:
                 in_degree[to_id] = in_degree.get(to_id, 0) + 1
     isolated: list[str | int] = []
     for n in nodes:
-        if n.type not in ("task", "gateway"):
+        if n.type not in ("task", "gateway", "artifact"):
             continue
         out_degree = sum(1 for to_id in n.next_ids if to_id in id_to_node)
         if in_degree[n.id] == 0 and out_degree == 0:
