@@ -196,6 +196,30 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
     return actors, nodes
 
 
+def find_isolated_flow_nodes(nodes: list[ProcessNode]) -> list[str | int]:
+    """
+    人に属するフローノード（task / gateway）のうち、
+    入次数・出次数がともに 0 の孤立ノードの ID を返す。
+    DoD: 人のタスクの接続（孤立した人のタスクが存在しないことの確認用）。
+    """
+    if not nodes:
+        return []
+    id_to_node = {n.id: n for n in nodes}
+    in_degree: dict[str | int, int] = {n.id: 0 for n in nodes}
+    for n in nodes:
+        for to_id in n.next_ids:
+            if to_id in id_to_node:
+                in_degree[to_id] = in_degree.get(to_id, 0) + 1
+    isolated: list[str | int] = []
+    for n in nodes:
+        if n.type not in ("task", "gateway"):
+            continue
+        out_degree = sum(1 for to_id in n.next_ids if to_id in id_to_node)
+        if in_degree[n.id] == 0 and out_degree == 0:
+            isolated.append(n.id)
+    return isolated
+
+
 def _assign_columns(nodes: list[ProcessNode], id_to_node: dict) -> None:
     """
     フロー順で列番号を付与。分岐発生時は「分岐前の列＋分岐先用の1列」とし、

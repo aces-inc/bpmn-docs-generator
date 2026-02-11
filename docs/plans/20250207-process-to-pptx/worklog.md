@@ -170,3 +170,11 @@
   - スキーマ: docs/yaml-schema.md にループの説明を追記。
   - テスト: `test_loop_start_at_column_zero_and_edge_present` を追加。
 - 品質ゲート: SKIP。ruff / pytest 通過。実装・テスト・確認・コミット済み。
+
+## 人のタスクの接続 DoD（plan-execute 2025-02-11、1件目）
+
+- **人のタスクの接続**: 孤立したフローノード（task/gateway で入次数・出次数がともに 0）を検出し、CLI で警告表示。
+  - `yaml_loader.find_isolated_flow_nodes(nodes)` を追加。YAML 検証として利用可能。
+  - CLI `from-yaml`: load 後に `find_isolated_flow_nodes` を実行し、孤立 ID があれば stderr に Warning を出力。
+  - テスト: `test_find_isolated_flow_nodes_none`, `test_find_isolated_flow_nodes_isolated`, `test_find_isolated_flow_nodes_start_end_ignored` を追加。
+- 実装・テスト・確認・コミットを 1 件ずつ実施。

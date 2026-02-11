@@ -6,6 +6,7 @@ from process_to_pptx.yaml_loader import (
     ProcessNode,
     load_process_yaml,
     compute_layout,
+    find_isolated_flow_nodes,
     SLIDE_MARGIN_MIN_EMU,
 )
 
@@ -46,6 +47,65 @@ def test_load_process_yaml(tmp_path: Path) -> None:
     assert nodes[0].next_ids == [2]
     assert nodes[1].type == "gateway"
     assert nodes[2].actor_index == 1
+
+
+def test_find_isolated_flow_nodes_none(tmp_path: Path) -> None:
+    """接続されたフローの場合は孤立ノードなし。"""
+    p = tmp_path / "process.yaml"
+    p.write_text(SAMPLE_YAML, encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    assert find_isolated_flow_nodes(nodes) == []
+
+
+def test_find_isolated_flow_nodes_isolated(tmp_path: Path) -> None:
+    """task/gateway で入出次数が 0 のノードは孤立として検出される（DoD: 人のタスクの接続）。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: つながっている
+    next: [2]
+  - id: 2
+    type: task
+    actor: 0
+    label: 終端
+    next: []
+  - id: 3
+    type: task
+    actor: 0
+    label: 孤立タスク
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    isolated = find_isolated_flow_nodes(nodes)
+    assert isolated == [3]
+
+
+def test_find_isolated_flow_nodes_start_end_ignored(tmp_path: Path) -> None:
+    """start/end はフローノード対象外なので孤立リストに含めない。"""
+    yaml_text = """
+actors: [A]
+nodes:
+  - id: 1
+    type: start
+    actor: 0
+    label: 開始
+    next: []
+  - id: 2
+    type: end
+    actor: 0
+    label: 終了
+    next: []
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes = load_process_yaml(p)
+    isolated = find_isolated_flow_nodes(nodes)
+    assert isolated == []
 
 
 def test_load_gateway_type(tmp_path: Path) -> None:
