@@ -64,3 +64,9 @@ Phase 1 完了: Part 3 全 DoD 達成。
 
 ### Phase 3: レビュー
 - 品質ゲート SKIP のため Codex レビューは省略。セルフ確認で問題なし。
+
+### Phase 4: PR 作成
+- コミット: feat: システム矢印にアクション名ラベル（request_to/response_from [{ id, label? }]）
+- ブランチ \`feat/margins-config\` を push 済み。PR は以下で作成可能:
+  - https://github.com/aces-inc/bpmn-docs-generator/compare/feat/margins-config
+  - タイトル例: feat: 余白コンフィグ化・システム用スイムレーン・矢印ラベル（Part 1–3）

@@ -30,21 +30,7 @@ nodes:
 
 - **actors**: スイムレーン名のリスト。**上から下**の順でレーンが並ぶ（PPTX では名前は左に表示）。
 - **nodes**: ノードのリスト。`id` で一意、`next` で接続先を参照。**列（左→右の位置）は `next` のつながりから自動計算**される（YAML の並び順は列の順にはならない）。
-- **layout**（任意）: ルート直下で余白・タスクサイズ・列数・フォントを指定する。指定しないキーは既定値のまま。
-
-```yaml
-layout:
-  margins:
-    left_pt: 10
-    right_pt: 10
-    top_pt: 108
-    bottom_pt: 10
-  task_size_ratio: 0.70
-  max_cols_per_slide: 9
-  task_font_pt: 12
-  actor_font_pt: 10
-  label_font_pt: 8
-```
+- **layout**（任意）: ルート直下で余白・タスクサイズ・列数・フォントを指定する。指定しないキーは既定値のまま。書き方は後述の**実例（bank-sales スタイル）**を参照。
 
 ---
 
@@ -114,11 +100,11 @@ layout:
 6. **ループは `next` で開始 ID を指定**  
    どこかで「開始に戻る」フローにしたいときは、そのタスクの `next` に開始ノードの `id` を入れる。例: 開始が `id: 0` なら `next: [0]`。PPTX では開始が常に左端に置かれ、戻り矢印が描画される。
 
-7. **システム接続は `service` + `request_to` / `response_from`**  
-   システム用レーンに `type: service` のノードを置き、`label` にサービス名（例: API、Salesforce）を書く。**システム用レーンの指定**: アクター名に**接頭辞 `[システム]`**（例: `"[システム]API"`）または**接尾辞 `_`**（例: `"CRM_"`）を付けると、そのアクターは 1 本の「システム」レーンに集約され、ユニークなシステム名（`type: service` の `label`）がそのレーン内に並んで配置される。**接続ルール**: 矢印は**タスクの下辺**から**システム図形の上辺**へ接続される。人タスクに `request_to: [サービスID]` を指定するとリクエストの点線（人側○・サービス側矢印）、`response_from: [サービスID]` を指定するとレスポンスの点線（サービス上辺→タスク下辺）が描かれる。**矢印にアクション名**（リード登録、商談登録など）を表示したい場合は `request_to: [{ id: svc, label: "リード登録" }]` や `response_from: [{ id: svc, label: "結果取得" }]` のように `{ id, label? }` 形式で書く。既存の「システムをアクターに見立てた task ノード」で書いている YAML は、`type: service` ノード＋ラベル付き `request_to` に書き換えると、1本のシステムレーンに集約され矢印にアクション名を出せる。列がずれる場合は L 字点線になる。
+7. **システム接続**  
+   アクター名に**接頭辞 `[システム]`** または**接尾辞 `_`** を付けると 1 本の「システム」レーンに集約される。`type: service` のノードを置き、人タスクに `request_to` / `response_from`（ラベル付き `{ id, label? }` 可）で接続。詳細は**実例（bank-sales スタイル）**参照。
 
 8. **YAML の並びは「読みやすさ」で**  
-   列の順は自動計算のため、YAML 上はブロックごとにまとめたりコメントで区切ったりしてよい（例: `# ----- 商談・見積 -----`）。
+   列の順は自動計算のため、ブロックコメント（`# ----- 開始 -----` など）で区切ると見通しがよい。実例参照。
 
 9. **アクター数**  
    多いとレーンとタスクは小さくなる。必要なら 4〜6 レーン程度に抑えると 1 枚に収まりやすい。
@@ -208,18 +194,7 @@ nodes:
     next: []
 ```
 
-**矢印にラベルを付ける場合**（Yes/No 等を矢印の横に表示したい場合）は、分岐ノードの `next` をオブジェクトのリストにし、各要素に `id` と `label` を書く。
-
-```yaml
-  - id: 2
-    type: gateway
-    actor: 0
-    label: 成約?
-    gateway_type: exclusive
-    next:
-      - { id: 3, label: "Yes" }
-      - { id: 4, label: "No" }
-```
+矢印にラベル（Yes/No、承認/差し戻しなど）を付ける場合は、`next:` をオブジェクトのリスト（`id` と `label`）で書く。**実例（bank-sales スタイル）**参照。
 
 ---
 
@@ -315,39 +290,130 @@ nodes:
 
 ---
 
-## システム接続の例
+## 実例: 人・複数システム・layout 一式（bank-sales スタイル）
 
-人タスクからシステム（サービス）へリクエストを送り、レスポンスを受け取る流れを表す。システムレーンに `type: service` のノードを 1 つ置き、人タスクに `request_to` / `response_from` でサービス ID を指定する。
+人レーン＋複数システムを 1 本の「システム」レーンに集約し、layout で余白・タスクサイズ・列数・フォントを指定する**実務向けの書き方**。フローをブロックコメントで区切り、分岐には「見送り/商談化」「差し戻し/承認」のようなラベルを付ける。完全な例は **`input/bank-sales.yaml`** を参照。
+
+**ファイル先頭**: 変換コマンドとスキーマ参照をコメントで書いておくと再利用しやすい。
 
 ```yaml
+# 変換: uv run process-to-pptx from-yaml input/bank-sales.yaml -o output/bank-sales.pptx
+# スキーマ: docs/yaml-schema.md / .cursor/skills/process-yaml/SKILL.md
+# システム用レーン: 接頭辞 [システム] で 1 本に集約。type: service で磁気ディスク表示。request_to で矢印にアクション名表示。
+
 actors:
+  - お客様
   - 営業
-  - Salesforce
+  - 上司
+  - "[システム]SFA"
+  - "[システム]M365"
+  - "[システム]ファイルサーバー"
+
+layout:                   # 余白・タスクサイズ・列数・フォントを指定
+  margins:
+    left_pt: 10
+    right_pt: 10
+    top_pt: 108
+    bottom_pt: 10
+  task_size_ratio: 0.9
+  max_cols_per_slide: 8
+  task_font_pt: 12
+  actor_font_pt: 14
+  label_font_pt: 10
+
 nodes:
-  - id: 17
-    type: task
-    actor: 0
-    label: 受注登録依頼
-    next: [18]
-    request_to: [sf-svc]
-  - id: 18
+  # ----- 開始 -----
+  - id: 0
+    type: start
+    actor: 1
+    label: 開始
+    next: [1]
+
+  # ----- 商談化前 -----
+  - id: 1
     type: task
     actor: 1
-    label: 受注登録
-    next: [19]
-  - id: sf-svc
-    type: service
+    label: リード収集・リスト整備
+    next: [3]
+    request_to: [{ id: sfa, label: "リード登録" }]
+  - id: 3
+    type: task
     actor: 1
-    label: Salesforce
-  - id: 19
+    label: アプローチ準備
+    next: [4]
+  - id: 4
+    type: task
+    actor: 1
+    label: メール・スケジュール
+    next: [5]
+    request_to: [{ id: m365, label: "メール・スケジュール" }]
+
+  # ----- 商談化 -----
+  - id: 5
     type: task
     actor: 0
-    label: 確認
+    label: 初回接触・反応
+    next: [6]
+  - id: 6
+    type: gateway
+    actor: 1
+    label: 商談化?
+    gateway_type: exclusive
+    next:
+      - { id: 7, label: "見送り" }
+      - { id: 8, label: "商談化" }
+  - id: 7
+    type: task
+    actor: 1
+    label: 見送り・継続育成
+    next: [44]
+  - id: 8
+    type: task
+    actor: 1
+    label: 商談化
+    next: [10]
+    request_to: [{ id: sfa, label: "商談登録" }]
+
+  # ----- 稟議・分岐（差し戻し/承認） -----
+  - id: 16
+    type: gateway
+    actor: 2
+    label: 事前承認?
+    gateway_type: exclusive
+    next:
+      - { id: 17, label: "差し戻し" }
+      - { id: 18, label: "承認" }
+
+  # ----- 終了 -----
+  - id: 44
+    type: end
+    actor: 1
+    label: 終了
     next: []
+
+  # ----- システム（1本の「システム」レーンに集約、磁気ディスクで label 表示） -----
+  - id: sfa
+    type: service
+    actor: 3
+    label: SFA
+  - id: m365
+    type: service
+    actor: 3
+    label: M365
+  - id: file
+    type: service
+    actor: 3
+    label: ファイルサーバー
 ```
 
-- `request_to: [sf-svc]` → 人タスクからサービスへ点線（人側○・サービス側矢印）。
-- レスポンスを表す場合は、レスポンスを受け取る人タスクに `response_from: [sf-svc]` を追加すると、サービスからそのタスクへ下→上の点線が描かれる。
+**このスタイルのポイント**
+
+- **複数システム用アクター**: `"[システム]SFA"` のように複数書いても、PPTX では 1 本の「システム」レーンに集約される。`type: service` のノードは `actor: 3`（集約後のシステムレーンのインデックス）で統一する。
+- **layout にコメント**: `# 余白・タスクサイズ…` のようにキーの意味を書いておくと編集しやすい。
+- **ノードをブロックで区切る**: `# ----- 開始 -----`、`# ----- 商談化 -----` のようにフローに沿って区切ると、長い YAML でも見通しがよい。
+- **分岐のラベル**: `next:` を複数行のリストで書き、`label: "見送り"` / `"商談化"` や `"差し戻し"` / `"承認"` のように業務用語を矢印に表示する。
+- **終了ノードへ複数から合流**: 見送り・継続育成など複数タスクの `next: [44]` で同じ終了ノードへ流す。
+- **request_to にラベル**: `[{ id: sfa, label: "リード登録" }]` のように書くと、人タスク→システムの矢印付近にアクション名が表示される。
 
 ---
 
@@ -364,4 +430,5 @@ Docker の場合: `input/` に YAML を置き、`docker compose run convert` で
 ## 参照
 
 - 詳細スキーマ: `docs/yaml-schema.md`
-- サンプル: `input/process.yaml`（コメントでブロック分けした実例）
+- 入門用: `input/process.yaml`（シンプルなフロー例）
+- **実務向け**: `input/bank-sales.yaml`（人・複数システム・layout・分岐ラベル・ブロックコメント）
