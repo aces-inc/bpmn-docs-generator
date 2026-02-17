@@ -18,3 +18,11 @@ Phase 1 完了: Part 1 全 DoD 達成（Part 2 は DR-002/003 未決定のため
 ### Phase 2: 品質ゲート
 - ユーザー指示により SKIP。全テスト 35 件は手動実行で通過済み。
 - 実装コミット: feat: 余白のコンフィグ化（layout.margins）
+- feature ブランチ \`feat/margins-config\` を push 済み。main は origin に合わせてリセット済み。
+
+### Phase 3: レビュー
+- 品質ゲート SKIP のため Codex レビューは省略。変更内容のセルフ確認で問題なしと判断。
+
+### Phase 4: PR 作成
+- ブランチ \`feat/margins-config\` は \`origin/feat/margins-config\` に push 済み。
+- PR 作成: ブラウザで https://github.com/aces-inc/bpmn-docs-generator/pull/new/feat/margins-config を開き、タイトル「feat: 余白のコンフィグ化（layout.margins）」で PR を作成してください。
