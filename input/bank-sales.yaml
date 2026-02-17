@@ -1,13 +1,27 @@
 # 銀行員の営業プロセス（商談化前〜アフターフォロー）と利用システム
 # 変換: uv run process-to-pptx from-yaml input/bank-sales.yaml -o output/bank-sales.pptx
+# スキーマ: docs/yaml-schema.md / .cursor/skills/process-yaml/SKILL.md
+# システム用レーン: 接頭辞 [システム] で 1 本に集約。type: service で磁気ディスク表示。request_to で矢印にアクション名表示。
 
 actors:
   - お客様
   - 営業
   - 上司
-  - SFA
-  - M365
-  - ファイルサーバー
+  - "[システム]SFA"
+  - "[システム]M365"
+  - "[システム]ファイルサーバー"
+
+layout:                   # 余白・タスクサイズ・列数・フォントを指定
+  margins:                 # スイムレーンとタスクを描画しないエリア・上下左右の余白（pt）
+    left_pt: 10
+    right_pt: 10
+    top_pt: 108
+    bottom_pt: 10
+  task_size_ratio: 0.9    # タスクのレーン高さに対する比率（0.2～1.0）
+  max_cols_per_slide: 8     # 1スライドあたりの最大列数
+  task_font_pt: 12         # タスク・ノード内のフォント（pt）
+  actor_font_pt: 14        # アクター名のフォント（pt）
+  label_font_pt: 10        # 矢印ラベルのフォント（pt）
 
 nodes:
   # ----- 開始 -----
@@ -22,12 +36,8 @@ nodes:
     type: task
     actor: 1
     label: リード収集・リスト整備
-    next: [2]
-  - id: 2
-    type: task
-    actor: 3
-    label: リード登録
     next: [3]
+    request_to: [{ id: sfa, label: "リード登録" }]
   - id: 3
     type: task
     actor: 1
@@ -35,9 +45,10 @@ nodes:
     next: [4]
   - id: 4
     type: task
-    actor: 4
+    actor: 1
     label: メール・スケジュール
     next: [5]
+    request_to: [{ id: m365, label: "メール・スケジュール" }]
 
   # ----- 商談化 -----
   - id: 5
@@ -50,7 +61,9 @@ nodes:
     actor: 1
     label: 商談化?
     gateway_type: exclusive
-    next: [7, 8]
+    next:
+      - { id: 7, label: "見送り" }
+      - { id: 8, label: "商談化" }
   - id: 7
     type: task
     actor: 1
@@ -60,12 +73,8 @@ nodes:
     type: task
     actor: 1
     label: 商談化
-    next: [9]
-  - id: 9
-    type: task
-    actor: 3
-    label: 商談登録
     next: [10]
+    request_to: [{ id: sfa, label: "商談登録" }]
   - id: 10
     type: task
     actor: 1
@@ -80,19 +89,16 @@ nodes:
     next: [12]
   - id: 12
     type: task
-    actor: 4
+    actor: 1
     label: 稟議書作成・共有
     next: [13]
+    request_to: [{ id: m365, label: "稟議書作成・共有" }]
   - id: 13
     type: task
     actor: 1
     label: 事前稟議提出
-    next: [14]
-  - id: 14
-    type: task
-    actor: 5
-    label: 書類保存
     next: [15]
+    request_to: [{ id: file, label: "書類保存" }]
   - id: 15
     type: task
     actor: 2
@@ -103,7 +109,9 @@ nodes:
     actor: 2
     label: 事前承認?
     gateway_type: exclusive
-    next: [17, 18]
+    next:
+      - { id: 17, label: "差し戻し" }
+      - { id: 18, label: "承認" }
   - id: 17
     type: task
     actor: 1
@@ -118,9 +126,10 @@ nodes:
   # ----- 提案 -----
   - id: 19
     type: task
-    actor: 4
+    actor: 1
     label: 提案書・資料作成
     next: [20]
+    request_to: [{ id: m365, label: "提案書・資料作成" }]
   - id: 20
     type: task
     actor: 1
@@ -136,7 +145,9 @@ nodes:
     actor: 0
     label: 受諾?
     gateway_type: exclusive
-    next: [23, 24]
+    next:
+      - { id: 23, label: "見送り" }
+      - { id: 24, label: "受諾" }
   - id: 23
     type: task
     actor: 0
@@ -151,19 +162,16 @@ nodes:
   # ----- 稟議 -----
   - id: 25
     type: task
-    actor: 4
+    actor: 1
     label: 稟議書作成
     next: [26]
+    request_to: [{ id: m365, label: "稟議書作成" }]
   - id: 26
     type: task
     actor: 1
     label: 稟議提出
-    next: [27]
-  - id: 27
-    type: task
-    actor: 5
-    label: 稟議書類保存
     next: [28]
+    request_to: [{ id: file, label: "稟議書類保存" }]
   - id: 28
     type: task
     actor: 2
@@ -174,7 +182,9 @@ nodes:
     actor: 2
     label: 稟議承認?
     gateway_type: exclusive
-    next: [30, 31]
+    next:
+      - { id: 30, label: "差し戻し" }
+      - { id: 31, label: "承認" }
   - id: 30
     type: task
     actor: 1
@@ -199,9 +209,10 @@ nodes:
     next: [34]
   - id: 34
     type: task
-    actor: 4
+    actor: 1
     label: 契約書作成
     next: [35]
+    request_to: [{ id: m365, label: "契約書作成" }]
 
   # ----- 契約 -----
   - id: 35
@@ -209,50 +220,34 @@ nodes:
     actor: 1
     label: 契約締結
     next: [36]
+    request_to: [{ id: sfa, label: "成約登録" }]
   - id: 36
     type: task
     actor: 0
     label: 契約締結
-    next: [37]
-  - id: 37
-    type: task
-    actor: 3
-    label: 成約登録
     next: [38]
   - id: 38
     type: task
     actor: 1
     label: 契約書類保管依頼
-    next: [39]
-  - id: 39
-    type: task
-    actor: 5
-    label: 契約書類保存
     next: [40]
+    request_to: [{ id: file, label: "契約書類保存" }]
 
   # ----- 実行 -----
   - id: 40
     type: task
     actor: 1
     label: 手続・実行
-    next: [41]
-  - id: 41
-    type: task
-    actor: 3
-    label: 実行記録
     next: [42]
+    request_to: [{ id: sfa, label: "実行記録" }]
 
   # ----- アフターフォロー -----
   - id: 42
     type: task
     actor: 1
     label: アフターフォロー
-    next: [43]
-  - id: 43
-    type: task
-    actor: 3
-    label: フォロー記録
     next: [44]
+    request_to: [{ id: sfa, label: "フォロー記録" }]
 
   # ----- 終了 -----
   - id: 44
@@ -260,3 +255,17 @@ nodes:
     actor: 1
     label: 終了
     next: []
+
+  # ----- システム（1本の「システム」レーンに集約、磁気ディスクで label 表示） -----
+  - id: sfa
+    type: service
+    actor: 3
+    label: SFA
+  - id: m365
+    type: service
+    actor: 3
+    label: M365
+  - id: file
+    type: service
+    actor: 3
+    label: ファイルサーバー

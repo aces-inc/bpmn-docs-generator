@@ -147,8 +147,6 @@ class ProcessLayout:
 
 # タスク正方形の一辺はスイムレーン高さの約60%（DoD）
 TASK_SIDE_RATIO = 0.6
-# この数以下のアクターのとき、描画領域の高さをレーンに割り当てて縦に伸ばす
-STRETCH_LANE_MAX_ACTORS = 4
 
 
 def _base_sizes_for_actors(num_actors: int, task_size_ratio: float = TASK_SIDE_RATIO) -> tuple[int, int]:
@@ -485,20 +483,17 @@ def compute_layout(
 
     num_actors = len(collapsed_actors) or 1
     available_height = layout.slide_height - layout.content_top_offset - layout.bottom_margin
-    # 2〜4 アクターのときだけ縦伸ばし（1 アクターだと 1 列しか入らなくなるため除外）
-    stretch_lanes = (
-        2 <= num_actors <= STRETCH_LANE_MAX_ACTORS and available_height > 0
-    )
-
-    if stretch_lanes:
-        # アクターが少ないとき: 描画領域の高さをレーンに割り当て、タスクは指定比率で中央配置
-        layout.lane_height = available_height // num_actors
-        layout.task_side = max(int(layout.lane_height * task_size_ratio), MIN_TASK_SIDE_EMU)
-        layout.gap = layout.task_side
-    else:
-        # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
-        layout.lane_height, layout.task_side = _base_sizes_for_actors(num_actors, task_size_ratio)
-        layout.gap = layout.task_side
+    # マージン内の高さをレーン数で分割してレーン高さを決定（margin の有無にかかわらず適用）
+    layout.lane_height = max(available_height // num_actors, 1)
+    # 1 アクター時はレーンを全高にすると 1 列しか入らなくなるため、最低 4 列入るよう上限を設ける
+    if num_actors == 1 and layout.content_width > 0 and task_size_ratio > 0:
+        # unit = task_side + gap = 2*task_side、n 列なら n*unit <= content_width → task_side <= content_width/(2*n)
+        min_cols = 4
+        max_task_side = max(layout.content_width // (2 * min_cols), MIN_TASK_SIDE_EMU)
+        max_lane_height = int(max_task_side / task_size_ratio)
+        layout.lane_height = min(layout.lane_height, max_lane_height)
+    layout.task_side = max(int(layout.lane_height * task_size_ratio), MIN_TASK_SIDE_EMU)
+    layout.gap = layout.task_side
 
     id_to_node = {n.id: n for n in nodes}
     # システム接続を列計算に含める（サービスノードに列を付与）
@@ -532,25 +527,16 @@ def compute_layout(
 
     # スライドに必ず収まるようスケールを算出
     required_height = num_actors * layout.lane_height
-    available_height = layout.slide_height - layout.content_top_offset - layout.bottom_margin
-    required_width_per_slide = tentative_max_cols * unit
     available_width = layout.content_width
-
-    scale_h = available_height / required_height if required_height else 1.0
+    required_width_per_slide = tentative_max_cols * unit
     scale_w = available_width / required_width_per_slide if required_width_per_slide else 1.0
-    # 縦伸ばし時は高さは縮めない（タスクは指定サイズのまま中央配置）
-    if stretch_lanes:
-        scale = min(scale_w, 1.0)
-    else:
-        scale = min(scale_h, scale_w, 1.0)
-
-    # 最小フォント 10pt 維持のため task_side の下限を守る
+    # レーン高さはマージン内で分割済みのため変更しない。幅が足りないときは横（task_side）のみ縮小
+    scale = min(scale_w, 1.0)
     if layout.task_side * scale < MIN_TASK_SIDE_EMU:
         scale = MIN_TASK_SIDE_EMU / layout.task_side
-
-    layout.lane_height = int(layout.lane_height * scale)
-    layout.task_side = max(int(layout.lane_height * task_size_ratio), MIN_TASK_SIDE_EMU)
+    layout.task_side = max(int(layout.task_side * scale), MIN_TASK_SIDE_EMU)
     layout.gap = layout.task_side
+    # layout.lane_height はマージン内分割のまま維持（縦方向は縮めない）
 
     # スケール後の列幅で最大列数を再計算し、スライド・列を再割り当て（YAML で列数指定時はその値を使用）
     unit = layout.task_side + layout.gap
