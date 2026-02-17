@@ -1,6 +1,7 @@
 """YAML 業務プロセス定義から編集可能な PPTX を生成する。"""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_CONNECTOR_TYPE, MSO_SHAPE
@@ -14,6 +15,7 @@ from .yaml_loader import (
     load_process_yaml,
     compute_layout,
     EMU_PER_PT,
+    TASK_AREA_LEFT_GAP_EMU,
 )
 
 
@@ -80,7 +82,7 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
         tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = name
-        p.font.size = Pt(10)
+        p.font.size = Pt(layout.actor_font_pt)
         p.font.bold = True
         p.font.color.rgb = RGBColor(0, 0, 0)  # フォント黒
         p.alignment = PP_ALIGN.CENTER  # 横方向も中央
@@ -135,7 +137,7 @@ def _connection_site_to(from_node, to_node) -> int:
     return CONNECTION_SITE_LEFT  # 左で受ける
 
 
-def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
+def _draw_node_shape(slide, layout: ProcessLayout, node, left: int, top: int, width: int, height: int):
     """タスク・分岐・スタート・ゴール・成果物・サービスの図形を 1 つ描画。"""
     if node.type == "gateway":
         shape_type = MSO_SHAPE.DIAMOND
@@ -181,7 +183,7 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
         p.text = "＋" if node.gateway_type == "parallel" else "✕"
     else:
         p.text = node.label  # task / start / end / artifact / service
-    p.font.size = Pt(10)
+    p.font.size = Pt(layout.task_font_pt)
     p.font.bold = False
     p.font.color.rgb = RGBColor(0, 0, 0)  # 黒文字（DoD: タスク文字の配置）
     shape.fill.solid()
@@ -211,7 +213,7 @@ def yaml_to_pptx(
         prs.save(str(output_path))
         return 0
 
-    layout = compute_layout(actors, nodes, margins=margins)
+    layout = compute_layout(actors, nodes, margins=margins, layout_config=layout_config)
     prs = Presentation()
     prs.slide_width = Emu(layout.slide_width)
     prs.slide_height = Emu(layout.slide_height)
@@ -239,9 +241,35 @@ def yaml_to_pptx(
             if not pos:
                 continue
             left, top, w, h = pos
-            shp = _draw_node_shape(slide, node, left, top, w, h)
+            shp = _draw_node_shape(slide, layout, node, left, top, w, h)
             shape_by_id[node.id] = shp
             total_shapes += 1
+
+        # システム用レーンがあるがサービスノードがこのスライドに無い場合、このスライドのシステムレーンに磁気ディスクを描画する（ページ毎にシステムが表示され矢印が伸ばせるようにする）
+        service_nodes = [n for n in layout.nodes if n.type == "service"]
+        if (
+            layout.actors
+            and layout.actors[-1] == "システム"
+            and service_nodes
+            and not any(n.slide_index == slide_idx for n in service_nodes)
+        ):
+            unique_system_labels = sorted(set(n.label for n in service_nodes))
+            id_by_label = {n.label: n.id for n in service_nodes}
+            system_lane_idx = len(layout.actors) - 1
+            unit = layout.task_side + layout.gap
+            base_left = layout.left_margin + layout.left_label_width + TASK_AREA_LEFT_GAP_EMU
+            # システム磁気ディスクはシステムレーンの一番左（列 0, 1, 2）に配置してはみ出しを防ぐ
+            for i, label in enumerate(unique_system_labels):
+                col = i
+                left = base_left + col * unit
+                top = layout.content_top_offset + system_lane_idx * layout.lane_height + (
+                    layout.lane_height - layout.task_side
+                ) // 2
+                w = h = layout.task_side
+                fake_node = SimpleNamespace(type="service", label=label)
+                shp = _draw_node_shape(slide, layout, fake_node, left, top, w, h)
+                shape_by_id[id_by_label[label]] = shp
+                total_shapes += 1
 
         # このスライド内のエッジのみ矢印で接続（両端が同じスライド）
         for from_id, to_id in layout.edges:
@@ -317,26 +345,25 @@ def yaml_to_pptx(
                 tf.word_wrap = False
                 p = tf.paragraphs[0]
                 p.text = edge_label
-                p.font.size = Pt(8)
+                p.font.size = Pt(layout.label_font_pt)
                 p.font.color.rgb = RGBColor(0, 0, 0)
                 p.alignment = PP_ALIGN.CENTER
                 total_shapes += 1
 
-        # システム接続: 点線で人⇔サービス。request=人側○・サービス側矢印下、response=下→上点線（DoD）
+        # システム接続: 点線で人⇔サービス。from（人タスク）がこのスライドにあれば描画し、to（サービス）はこのスライドに描いた磁気ディスクに接続する（ページ毎にシステムを表示）
         for from_id, to_id, role in layout.system_edges:
             from_node = next((n for n in layout.nodes if n.id == from_id), None)
             to_node = next((n for n in layout.nodes if n.id == to_id), None)
             if not from_node or not to_node:
                 continue
-            if from_node.slide_index != slide_idx or to_node.slide_index != slide_idx:
+            if from_node.slide_index != slide_idx:
                 continue
             from_shp = shape_by_id.get(from_id)
             to_shp = shape_by_id.get(to_id)
             if not from_shp or not to_shp:
                 continue
-            same_col = from_node.col_in_slide == to_node.col_in_slide
-            connector_type = MSO_CONNECTOR_TYPE.STRAIGHT if same_col else MSO_CONNECTOR_TYPE.ELBOW
-            conn = slide.shapes.add_connector(connector_type, 0, 0, 0, 0)
+            # タスク⇔システムの矢印は常にエルボー（折れ線）
+            conn = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.ELBOW, 0, 0, 0, 0)
             if role == "request":
                 # DoD: タスクの下辺に矢印を結合、システムの上辺に矢印を結合
                 conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
@@ -382,7 +409,7 @@ def yaml_to_pptx(
                 tf.word_wrap = False
                 p = tf.paragraphs[0]
                 p.text = sys_label
-                p.font.size = Pt(8)
+                p.font.size = Pt(layout.label_font_pt)
                 p.font.color.rgb = RGBColor(0, 0, 0)
                 p.alignment = PP_ALIGN.CENTER
                 total_shapes += 1
