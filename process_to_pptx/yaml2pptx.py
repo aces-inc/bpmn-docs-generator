@@ -200,7 +200,8 @@ def yaml_to_pptx(
     YAML ファイルを読み、PPTX レイアウト仕様に従って編集可能な PPTX を生成する。
     戻り値はスライドに追加した図形の総数（タスク・分岐・矢印・レーン線・ラベル含む）。
     """
-    actors, nodes = load_process_yaml(yaml_path)
+    actors, nodes, layout_config = load_process_yaml(yaml_path)
+    margins = layout_config.get("margins") if isinstance(layout_config.get("margins"), dict) else None
     if not actors or not nodes:
         prs = Presentation()
         prs.slide_width = Emu(9144000)
@@ -210,7 +211,7 @@ def yaml_to_pptx(
         prs.save(str(output_path))
         return 0
 
-    layout = compute_layout(actors, nodes)
+    layout = compute_layout(actors, nodes, margins=margins)
     prs = Presentation()
     prs.slide_width = Emu(layout.slide_width)
     prs.slide_height = Emu(layout.slide_height)

@@ -62,6 +62,8 @@ class ProcessLayout:
     gap: int = 0  # task_side で後から設定
     # 図の描画開始位置（スライド上端から約25%下がった位置、タイトル・キーメッセージ用領域確保）
     content_top_offset: int = 0  # compute_layout で設定
+    # 図の下端からスライド下縁までの余白（compute_layout で使用）
+    bottom_margin: int = 0  # compute_layout で設定
 
     actors: list[str] = field(default_factory=list)
     nodes: list[ProcessNode] = field(default_factory=list)
@@ -136,22 +138,25 @@ def _normalize_id(raw: Any) -> str | int:
     return str(raw)
 
 
-def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
+def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode], dict[str, Any]]:
     """
-    YAML ファイルを読み、actors とノードリストを返す。
+    YAML ファイルを読み、actors とノードリストと layout 設定を返す。
     ノードの actor はインデックスに正規化し、next は ID のリストに正規化する。
+    戻り値: (actors, nodes, layout_config)。layout_config はルートの "layout" の値（なければ {}）。
     """
     text = Path(path).read_text(encoding="utf-8")
     data = yaml.safe_load(text)
     if not data or not isinstance(data, dict):
-        return [], []
+        return [], [], {}
+
+    layout_config = data.get("layout") if isinstance(data.get("layout"), dict) else {}
 
     raw_actors = data.get("actors") or []
     actors = [str(a) for a in raw_actors] if isinstance(raw_actors, list) else []
 
     raw_nodes = data.get("nodes") or []
     if not isinstance(raw_nodes, list):
-        return actors, []
+        return actors, [], layout_config
 
     nodes: list[ProcessNode] = []
     for item in raw_nodes:
@@ -211,7 +216,7 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             )
         )
 
-    return actors, nodes
+    return actors, nodes, layout_config
 
 
 def find_isolated_flow_nodes(nodes: list[ProcessNode]) -> list[str | int]:
@@ -309,19 +314,56 @@ def _assign_columns(
             node.column = 0
 
 
+def _parse_margins_emu(margins: dict[str, Any] | None) -> dict[str, int]:
+    """
+    YAML の layout.margins（pt 指定）を EMU に変換する。
+    未指定のキーは変更しない（compute_layout の既定値を使用）。
+    left_pt / right_pt は最小 SLIDE_MARGIN_MIN_EMU（10pt）を維持。
+    戻り値: left_margin, right_margin, content_top_offset, bottom_margin の EMU。
+    """
+    if not margins or not isinstance(margins, dict):
+        return {}
+    out: dict[str, int] = {}
+    if "left_pt" in margins and margins["left_pt"] is not None:
+        pt = int(margins["left_pt"])
+        out["left_margin"] = max(pt * EMU_PER_PT, SLIDE_MARGIN_MIN_EMU)
+    if "right_pt" in margins and margins["right_pt"] is not None:
+        pt = int(margins["right_pt"])
+        out["right_margin"] = max(pt * EMU_PER_PT, SLIDE_MARGIN_MIN_EMU)
+    if "top_pt" in margins and margins["top_pt"] is not None:
+        out["content_top_offset"] = max(0, int(margins["top_pt"]) * EMU_PER_PT)
+    if "bottom_pt" in margins and margins["bottom_pt"] is not None:
+        out["bottom_margin"] = max(0, int(margins["bottom_pt"]) * EMU_PER_PT)
+    return out
+
+
 def compute_layout(
     actors: list[str],
     nodes: list[ProcessNode],
     max_cols_per_slide: int | None = None,
+    margins: dict[str, Any] | None = None,
 ) -> ProcessLayout:
     """
     アクター名・ノードリストからレイアウトを計算する。
     アクター数に応じてレーン高さ・タスクサイズを調整し、
     図がスライドの描画領域からはみ出さないようスケールする。
     ノードは列に割り当て、max_cols を超えたら次スライド。
+    margins: YAML の layout.margins（left_pt, right_pt, top_pt, bottom_pt 等）。未指定時は現行どおり。
     """
     layout = ProcessLayout(actors=actors, nodes=nodes)
     layout.content_top_offset = int(layout.slide_height * 0.25)
+    layout.bottom_margin = int(0.05 * layout.slide_height)
+
+    # YAML の layout.margins で上書き
+    margins_emu = _parse_margins_emu(margins)
+    if "left_margin" in margins_emu:
+        layout.left_margin = margins_emu["left_margin"]
+    if "right_margin" in margins_emu:
+        layout.right_margin = margins_emu["right_margin"]
+    if "content_top_offset" in margins_emu:
+        layout.content_top_offset = margins_emu["content_top_offset"]
+    if "bottom_margin" in margins_emu:
+        layout.bottom_margin = margins_emu["bottom_margin"]
 
     # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
     num_actors = len(actors) or 1
@@ -352,8 +394,7 @@ def compute_layout(
 
     # スライドに必ず収まるようスケールを算出
     required_height = num_actors * layout.lane_height
-    bottom_margin = int(0.05 * layout.slide_height)
-    available_height = layout.slide_height - layout.content_top_offset - bottom_margin
+    available_height = layout.slide_height - layout.content_top_offset - layout.bottom_margin
     required_width_per_slide = tentative_max_cols * unit
     available_width = layout.content_width
 

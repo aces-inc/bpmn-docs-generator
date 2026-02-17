@@ -282,14 +282,12 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "pillow" },
     { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "pillow", marker = "extra == 'dev'", specifier = ">=10.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "python-pptx", specifier = ">=0.6.21" },
     { name = "pyyaml", specifier = ">=6.0" },

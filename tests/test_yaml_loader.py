@@ -8,6 +8,7 @@ from process_to_pptx.yaml_loader import (
     compute_layout,
     find_isolated_flow_nodes,
     SLIDE_MARGIN_MIN_EMU,
+    EMU_PER_PT,
 )
 
 
@@ -37,8 +38,9 @@ nodes:
 def test_load_process_yaml(tmp_path: Path) -> None:
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, layout_config = load_process_yaml(p)
     assert actors == ["お客様", "IT営業"]
+    assert layout_config == {}
     assert len(nodes) == 3
     assert nodes[0].id == 1
     assert nodes[0].type == "task"
@@ -53,7 +55,7 @@ def test_find_isolated_flow_nodes_none(tmp_path: Path) -> None:
     """接続されたフローの場合は孤立ノードなし。"""
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     assert find_isolated_flow_nodes(nodes) == []
 
 
@@ -80,7 +82,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     isolated = find_isolated_flow_nodes(nodes)
     assert isolated == [3]
 
@@ -103,7 +105,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     isolated = find_isolated_flow_nodes(nodes)
     assert isolated == []
 
@@ -132,13 +134,13 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     assert nodes[0].type == "gateway"
     assert nodes[0].gateway_type == "parallel"
     # 省略時は exclusive
     yaml2 = yaml_text.replace("gateway_type: parallel", "")
     p.write_text(yaml2.strip(), encoding="utf-8")
-    _, nodes2 = load_process_yaml(p)
+    _, nodes2, _ = load_process_yaml(p)
     assert nodes2[0].gateway_type == "exclusive"
 
 
@@ -169,7 +171,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     gw = nodes[0]
     assert gw.next_ids == [2, 3]
     assert gw.next_labels == {2: "Yes", 3: "No"}
@@ -201,7 +203,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     assert layout.edge_labels.get((1, 2)) == "Yes"
     assert layout.edge_labels.get((1, 3)) == "No"
@@ -231,7 +233,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     svc = next(n for n in nodes if n.type == "service")
     assert svc.id == "svc"
     assert svc.label == "API"
@@ -267,7 +269,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     assert len(nodes) == 3
     assert nodes[0].type == "start"
     assert nodes[1].type == "task"
@@ -292,7 +294,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     assert nodes[1].type == "artifact"
     assert nodes[1].label == "見積書"
 
@@ -300,7 +302,7 @@ nodes:
 def test_compute_layout(tmp_path: Path) -> None:
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     assert layout.num_slides >= 1
     assert len(layout.node_positions) == 3
@@ -335,7 +337,7 @@ nodes:
 """
     p = tmp_path / "process.yaml"
     p.write_text(yaml_with_loop.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     start_node = next(n for n in nodes if n.type == "start" and n.id == 0)
     assert start_node.column == 0, "開始ノードはループ時も列0に配置される"
@@ -346,13 +348,43 @@ def test_slide_margin_10pt(tmp_path: Path) -> None:
     """スライド左右に 10pt 以上余白がとられる（DoD）。"""
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     assert layout.left_margin >= SLIDE_MARGIN_MIN_EMU
     assert layout.right_margin >= SLIDE_MARGIN_MIN_EMU
     for nid, (left, top, w, h) in layout.node_positions.items():
         assert left >= layout.left_margin
         assert left + w <= layout.slide_width - layout.right_margin
+
+
+def test_layout_margins_from_yaml(tmp_path: Path) -> None:
+    """YAML の layout.margins が compute_layout に反映される。"""
+    yaml_with_margins = """
+layout:
+  margins:
+    left_pt: 20
+    right_pt: 30
+    top_pt: 100
+    bottom_pt: 50
+actors:
+  - A
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: T1
+    next: []
+"""
+    p = tmp_path / "process.yaml"
+    p.write_text(yaml_with_margins, encoding="utf-8")
+    actors, nodes, layout_config = load_process_yaml(p)
+    assert "margins" in layout_config
+    margins = layout_config["margins"]
+    layout = compute_layout(actors, nodes, margins=margins)
+    assert layout.left_margin >= 20 * EMU_PER_PT
+    assert layout.right_margin >= 30 * EMU_PER_PT
+    assert layout.content_top_offset == 100 * EMU_PER_PT
+    assert layout.bottom_margin == 50 * EMU_PER_PT
 
 
 def test_actor_count_scaling() -> None:
@@ -377,7 +409,7 @@ def test_layout_fits_in_slide(tmp_path: Path) -> None:
     """生成レイアウトの図がスライドの描画領域からはみ出さない。"""
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     # 縦: 描画領域下端
     content_bottom = layout.content_top_offset + len(actors) * layout.lane_height

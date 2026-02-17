@@ -59,7 +59,7 @@ def main() -> None:
 
     if args.command == "from-yaml":
         # DoD: 人のタスクの接続 — 孤立したフローノードがあれば警告
-        actors, nodes = yaml_loader.load_process_yaml(args.input)
+        actors, nodes, _ = yaml_loader.load_process_yaml(args.input)
         isolated = yaml_loader.find_isolated_flow_nodes(nodes)
         if isolated:
             print(
