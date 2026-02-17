@@ -21,6 +21,47 @@ SLIDE_MARGIN_MIN_EMU = 10 * EMU_PER_PT
 # アクター枠の右端と最初のタスク列の間の余白（DoD: 10pt）
 TASK_AREA_LEFT_GAP_EMU = 10 * EMU_PER_PT
 
+# DR-002: システム用レーンとみなすアクターのマーク。接頭辞または接尾辞 "_"
+SYSTEM_LANE_PREFIX = "[システム]"
+SYSTEM_LANE_SUFFIX = "_"
+
+
+def is_system_lane_actor(actor_name: str) -> bool:
+    """アクター名がシステム用レーンとみなすマーク（接頭辞 or 接尾辞 _）を持つか。"""
+    if not actor_name or not isinstance(actor_name, str):
+        return False
+    s = actor_name.strip()
+    return s.startswith(SYSTEM_LANE_PREFIX) or s.rstrip().endswith(SYSTEM_LANE_SUFFIX)
+
+
+def _collapse_system_lanes(actors: list[str]) -> tuple[list[str], dict[int, int]]:
+    """
+    システム用マークの付いたアクターを1本の「システム」レーンに集約する。
+    戻り値: (new_actors, old_index -> new_index)。システム用がいなければ actors をそのまま返す。
+    """
+    if not actors:
+        return [], {}
+    system_indices = {i for i, a in enumerate(actors) if is_system_lane_actor(a)}
+    if not system_indices:
+        return actors, {i: i for i in range(len(actors))}
+    non_system = [a for i, a in enumerate(actors) if i not in system_indices]
+    new_actors = non_system + ["システム"]
+    old_to_new: dict[int, int] = {}
+    system_new_idx = len(new_actors) - 1
+    for old_idx in range(len(actors)):
+        if old_idx in system_indices:
+            old_to_new[old_idx] = system_new_idx
+        else:
+            name = actors[old_idx]
+            # 非システムは new_actors 内の同じ名前の最初の出現位置（順序保持）
+            for ni, na in enumerate(new_actors):
+                if na == name:
+                    old_to_new[old_idx] = ni
+                    break
+            else:
+                old_to_new[old_idx] = system_new_idx
+    return new_actors, old_to_new
+
 
 @dataclass
 class ProcessNode:
@@ -37,8 +78,12 @@ class ProcessNode:
     gateway_type: str = "exclusive"
     # システム接続: 人タスクからサービスへのリクエスト先ノード ID のリスト
     request_to: list[str | int] = field(default_factory=list)
+    # システム接続: リクエスト先ごとのラベル（request_to が [{ id, label? }] のとき）
+    request_to_labels: dict[str | int, str] = field(default_factory=dict)
     # システム接続: 人タスクがレスポンスを受け取るサービスノード ID のリスト
     response_from: list[str | int] = field(default_factory=list)
+    # システム接続: レスポンス元ごとのラベル（response_from が [{ id, label? }] のとき）
+    response_from_labels: dict[str | int, str] = field(default_factory=dict)
     # レイアウト後に設定
     column: int = 0
     slide_index: int = 0
@@ -62,6 +107,8 @@ class ProcessLayout:
     gap: int = 0  # task_side で後から設定
     # 図の描画開始位置（スライド上端から約25%下がった位置、タイトル・キーメッセージ用領域確保）
     content_top_offset: int = 0  # compute_layout で設定
+    # 図の下端からスライド下縁までの余白（compute_layout で使用）
+    bottom_margin: int = 0  # compute_layout で設定
 
     actors: list[str] = field(default_factory=list)
     nodes: list[ProcessNode] = field(default_factory=list)
@@ -74,7 +121,13 @@ class ProcessLayout:
     edge_labels: dict[tuple[str | int, str | int], str] = field(default_factory=dict)
     # システム接続: (from_id, to_id, "request"|"response")。request=人→サービス、response=サービス→人
     system_edges: list[tuple[str | int, str | int, str]] = field(default_factory=list)
+    # システム接続矢印のラベル: (from_id, to_id, "request"|"response") -> 表示テキスト
+    system_edge_labels: dict[tuple[str | int, str | int, str], str] = field(default_factory=dict)
     num_slides: int = 1
+    # フォントサイズ（pt）。layout で未指定時は既定値
+    task_font_pt: int = 10
+    actor_font_pt: int = 10
+    label_font_pt: int = 8
 
     def __post_init__(self) -> None:
         if self.gap == 0:
@@ -96,7 +149,7 @@ class ProcessLayout:
 TASK_SIDE_RATIO = 0.6
 
 
-def _base_sizes_for_actors(num_actors: int) -> tuple[int, int]:
+def _base_sizes_for_actors(num_actors: int, task_size_ratio: float = TASK_SIDE_RATIO) -> tuple[int, int]:
     """
     アクター数に応じたレーン高さ（EMU）を返す。タスク一辺はレーン高さの約60%。
     少ないときは大きく、多いときは小さくする。最小フォント 10pt 維持のため下限あり。
@@ -109,7 +162,7 @@ def _base_sizes_for_actors(num_actors: int) -> tuple[int, int]:
         lane_height = int(1.2 * EMU_PER_INCH)
     else:
         lane_height = int(1.0 * EMU_PER_INCH)
-    task_side = max(int(lane_height * TASK_SIDE_RATIO), MIN_TASK_SIDE_EMU)
+    task_side = max(int(lane_height * task_size_ratio), MIN_TASK_SIDE_EMU)
     return lane_height, task_side
 
 
@@ -136,22 +189,25 @@ def _normalize_id(raw: Any) -> str | int:
     return str(raw)
 
 
-def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
+def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode], dict[str, Any]]:
     """
-    YAML ファイルを読み、actors とノードリストを返す。
+    YAML ファイルを読み、actors とノードリストと layout 設定を返す。
     ノードの actor はインデックスに正規化し、next は ID のリストに正規化する。
+    戻り値: (actors, nodes, layout_config)。layout_config はルートの "layout" の値（なければ {}）。
     """
     text = Path(path).read_text(encoding="utf-8")
     data = yaml.safe_load(text)
     if not data or not isinstance(data, dict):
-        return [], []
+        return [], [], {}
+
+    layout_config = data.get("layout") if isinstance(data.get("layout"), dict) else {}
 
     raw_actors = data.get("actors") or []
     actors = [str(a) for a in raw_actors] if isinstance(raw_actors, list) else []
 
     raw_nodes = data.get("nodes") or []
     if not isinstance(raw_nodes, list):
-        return actors, []
+        return actors, [], layout_config
 
     nodes: list[ProcessNode] = []
     for item in raw_nodes:
@@ -191,11 +247,31 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
             gateway_type = "parallel" if gt == "parallel" else "exclusive"
 
         request_to: list[str | int] = []
-        for rid in item.get("request_to") or []:
-            request_to.append(_normalize_id(rid))
+        request_to_labels: dict[str | int, str] = {}
+        for x in item.get("request_to") or []:
+            if isinstance(x, dict):
+                rid = x.get("id")
+                if rid is not None:
+                    to_id = _normalize_id(rid)
+                    request_to.append(to_id)
+                    lb = x.get("label")
+                    if lb is not None and str(lb).strip():
+                        request_to_labels[to_id] = str(lb).strip()
+            else:
+                request_to.append(_normalize_id(x))
         response_from: list[str | int] = []
-        for rid in item.get("response_from") or []:
-            response_from.append(_normalize_id(rid))
+        response_from_labels: dict[str | int, str] = {}
+        for x in item.get("response_from") or []:
+            if isinstance(x, dict):
+                rid = x.get("id")
+                if rid is not None:
+                    from_id = _normalize_id(rid)
+                    response_from.append(from_id)
+                    lb = x.get("label")
+                    if lb is not None and str(lb).strip():
+                        response_from_labels[from_id] = str(lb).strip()
+            else:
+                response_from.append(_normalize_id(x))
 
         nodes.append(
             ProcessNode(
@@ -207,11 +283,13 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode]]:
                 next_labels=next_labels,
                 gateway_type=gateway_type,
                 request_to=request_to,
+                request_to_labels=request_to_labels,
                 response_from=response_from,
+                response_from_labels=response_from_labels,
             )
         )
 
-    return actors, nodes
+    return actors, nodes, layout_config
 
 
 def find_isolated_flow_nodes(nodes: list[ProcessNode]) -> list[str | int]:
@@ -309,23 +387,112 @@ def _assign_columns(
             node.column = 0
 
 
+def _parse_margins_emu(margins: dict[str, Any] | None) -> dict[str, int]:
+    """
+    YAML の layout.margins（pt 指定）を EMU に変換する。
+    未指定のキーは変更しない（compute_layout の既定値を使用）。
+    left_pt / right_pt は最小 SLIDE_MARGIN_MIN_EMU（10pt）を維持。
+    戻り値: left_margin, right_margin, content_top_offset, bottom_margin の EMU。
+    """
+    if not margins or not isinstance(margins, dict):
+        return {}
+    out: dict[str, int] = {}
+    if "left_pt" in margins and margins["left_pt"] is not None:
+        pt = int(margins["left_pt"])
+        out["left_margin"] = max(pt * EMU_PER_PT, SLIDE_MARGIN_MIN_EMU)
+    if "right_pt" in margins and margins["right_pt"] is not None:
+        pt = int(margins["right_pt"])
+        out["right_margin"] = max(pt * EMU_PER_PT, SLIDE_MARGIN_MIN_EMU)
+    if "top_pt" in margins and margins["top_pt"] is not None:
+        out["content_top_offset"] = max(0, int(margins["top_pt"]) * EMU_PER_PT)
+    if "bottom_pt" in margins and margins["bottom_pt"] is not None:
+        out["bottom_margin"] = max(0, int(margins["bottom_pt"]) * EMU_PER_PT)
+    return out
+
+
+def _parse_layout_options(layout_config: dict[str, Any] | None) -> dict[str, Any]:
+    """
+    YAML の layout からタスクサイズ・列数・フォント等のオプションを返す。
+    未指定のキーは含めない（呼び出し側で既定値を使用）。
+    """
+    if not layout_config or not isinstance(layout_config, dict):
+        return {}
+    out: dict[str, Any] = {}
+    if "max_cols_per_slide" in layout_config and layout_config["max_cols_per_slide"] is not None:
+        try:
+            out["max_cols_per_slide"] = max(1, int(layout_config["max_cols_per_slide"]))
+        except (TypeError, ValueError):
+            pass
+    if "task_size_ratio" in layout_config and layout_config["task_size_ratio"] is not None:
+        try:
+            r = float(layout_config["task_size_ratio"])
+            out["task_size_ratio"] = max(0.2, min(1.0, r))
+        except (TypeError, ValueError):
+            pass
+    for key, default in (("task_font_pt", 10), ("actor_font_pt", 10), ("label_font_pt", 8)):
+        if key in layout_config and layout_config[key] is not None:
+            try:
+                pt = int(layout_config[key])
+                if pt >= 6:
+                    out[key] = pt
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
 def compute_layout(
     actors: list[str],
     nodes: list[ProcessNode],
     max_cols_per_slide: int | None = None,
+    margins: dict[str, Any] | None = None,
+    layout_config: dict[str, Any] | None = None,
 ) -> ProcessLayout:
     """
     アクター名・ノードリストからレイアウトを計算する。
     アクター数に応じてレーン高さ・タスクサイズを調整し、
     図がスライドの描画領域からはみ出さないようスケールする。
     ノードは列に割り当て、max_cols を超えたら次スライド。
+    margins: YAML の layout.margins（left_pt, right_pt, top_pt, bottom_pt 等）。未指定時は現行どおり。
+    layout_config: YAML の layout ルート。max_cols_per_slide, task_size_ratio, task_font_pt 等を読む。
     """
-    layout = ProcessLayout(actors=actors, nodes=nodes)
-    layout.content_top_offset = int(layout.slide_height * 0.25)
+    # DR-002: システム用マークのアクターを1本のレーンに集約
+    collapsed_actors, old_to_new = _collapse_system_lanes(actors)
+    for node in nodes:
+        node.actor_index = old_to_new.get(node.actor_index, node.actor_index)
 
-    # アクター数に応じたベースサイズ（少ない＝大きく、多い＝小さく）
-    num_actors = len(actors) or 1
-    layout.lane_height, layout.task_side = _base_sizes_for_actors(num_actors)
+    layout = ProcessLayout(actors=collapsed_actors, nodes=nodes)
+    layout.content_top_offset = int(layout.slide_height * 0.25)
+    layout.bottom_margin = int(0.05 * layout.slide_height)
+
+    # YAML の layout.margins で上書き
+    margins_emu = _parse_margins_emu(margins)
+    if "left_margin" in margins_emu:
+        layout.left_margin = margins_emu["left_margin"]
+    if "right_margin" in margins_emu:
+        layout.right_margin = margins_emu["right_margin"]
+    if "content_top_offset" in margins_emu:
+        layout.content_top_offset = margins_emu["content_top_offset"]
+    if "bottom_margin" in margins_emu:
+        layout.bottom_margin = margins_emu["bottom_margin"]
+
+    # layout オプション（列数・タスク比率・フォント）
+    layout_opts = _parse_layout_options(layout_config)
+    task_size_ratio = layout_opts.get("task_size_ratio", TASK_SIDE_RATIO)
+    if layout_opts.get("max_cols_per_slide") is not None:
+        max_cols_per_slide = layout_opts["max_cols_per_slide"]
+
+    num_actors = len(collapsed_actors) or 1
+    available_height = layout.slide_height - layout.content_top_offset - layout.bottom_margin
+    # マージン内の高さをレーン数で分割してレーン高さを決定（margin の有無にかかわらず適用）
+    layout.lane_height = max(available_height // num_actors, 1)
+    # 1 アクター時はレーンを全高にすると 1 列しか入らなくなるため、最低 4 列入るよう上限を設ける
+    if num_actors == 1 and layout.content_width > 0 and task_size_ratio > 0:
+        # unit = task_side + gap = 2*task_side、n 列なら n*unit <= content_width → task_side <= content_width/(2*n)
+        min_cols = 4
+        max_task_side = max(layout.content_width // (2 * min_cols), MIN_TASK_SIDE_EMU)
+        max_lane_height = int(max_task_side / task_size_ratio)
+        layout.lane_height = min(layout.lane_height, max_lane_height)
+    layout.task_side = max(int(layout.lane_height * task_size_ratio), MIN_TASK_SIDE_EMU)
     layout.gap = layout.task_side
 
     id_to_node = {n.id: n for n in nodes}
@@ -340,6 +507,14 @@ def compute_layout(
                 extra_edges.append((from_id, n.id))
     _assign_columns(nodes, id_to_node, extra_edges)
 
+    # システム用レーン内: type: service のノードはユニークな label 順に列を並べる（DoD）
+    max_col = max((n.column for n in nodes if n.column >= 0), default=-1)
+    unique_system_labels = sorted(set(n.label for n in nodes if n.type == "service"))
+    for node in nodes:
+        if node.type == "service" and unique_system_labels:
+            idx = unique_system_labels.index(node.label)
+            node.column = max_col + 1 + idx
+
     # 仮の max_cols_per_slide でスライド・列を割り当て
     unit = layout.task_side + layout.gap
     if max_cols_per_slide is not None:
@@ -352,32 +527,29 @@ def compute_layout(
 
     # スライドに必ず収まるようスケールを算出
     required_height = num_actors * layout.lane_height
-    bottom_margin = int(0.05 * layout.slide_height)
-    available_height = layout.slide_height - layout.content_top_offset - bottom_margin
-    required_width_per_slide = tentative_max_cols * unit
     available_width = layout.content_width
-
-    scale_h = available_height / required_height if required_height else 1.0
+    required_width_per_slide = tentative_max_cols * unit
     scale_w = available_width / required_width_per_slide if required_width_per_slide else 1.0
-    scale = min(scale_h, scale_w, 1.0)
-
-    # 最小フォント 10pt 維持のため task_side の下限を守る
+    # レーン高さはマージン内で分割済みのため変更しない。幅が足りないときは横（task_side）のみ縮小
+    scale = min(scale_w, 1.0)
     if layout.task_side * scale < MIN_TASK_SIDE_EMU:
         scale = MIN_TASK_SIDE_EMU / layout.task_side
-
-    layout.lane_height = int(layout.lane_height * scale)
-    # タスク正方形の一辺はレーン高さの約60%（DoD）
-    layout.task_side = max(int(layout.lane_height * TASK_SIDE_RATIO), MIN_TASK_SIDE_EMU)
+    layout.task_side = max(int(layout.task_side * scale), MIN_TASK_SIDE_EMU)
     layout.gap = layout.task_side
+    # layout.lane_height はマージン内分割のまま維持（縦方向は縮めない）
 
-    # スケール後の列幅で最大列数を再計算し、スライド・列を再割り当て
+    # スケール後の列幅で最大列数を再計算し、スライド・列を再割り当て（YAML で列数指定時はその値を使用）
     unit = layout.task_side + layout.gap
-    final_max_cols = max(1, layout.content_width // unit)
+    if layout_opts.get("max_cols_per_slide") is not None:
+        final_max_cols = layout_opts["max_cols_per_slide"]
+    else:
+        final_max_cols = max(1, layout.content_width // unit)
     for node in nodes:
         node.slide_index = node.column // final_max_cols
         node.col_in_slide = node.column % final_max_cols
 
-    layout.num_slides = max((n.slide_index for n in nodes), default=0) + 1
+    # システムノードだけのスライドは作らない（各ページにシステムは左端で描画するため）
+    layout.num_slides = max((n.slide_index for n in nodes if n.type != "service"), default=0) + 1
 
     # エッジ収集（next から）と分岐矢印ラベル
     for node in nodes:
@@ -387,14 +559,20 @@ def compute_layout(
                 lbl = node.next_labels.get(to_id)
                 if lbl:
                     layout.edge_labels[(node.id, to_id)] = lbl
-    # システム接続エッジ（request / response）
+    # システム接続エッジ（request / response）と矢印ラベル
     for n in nodes:
         for to_id in n.request_to:
             if to_id in id_to_node:
                 layout.system_edges.append((n.id, to_id, "request"))
+                lbl = n.request_to_labels.get(to_id)
+                if lbl:
+                    layout.system_edge_labels[(n.id, to_id, "request")] = lbl
         for from_id in n.response_from:
             if from_id in id_to_node:
                 layout.system_edges.append((from_id, n.id, "response"))
+                lbl = n.response_from_labels.get(from_id)
+                if lbl:
+                    layout.system_edge_labels[(from_id, n.id, "response")] = lbl
 
     # 各ノードの (left, top, width, height) を EMU で計算（スライド内の座標）
     # アクター枠と最初のタスクの間に 10pt 余白（DoD）
@@ -437,5 +615,13 @@ def compute_layout(
             top = zone_top + offset
             offset += h
             layout.node_positions[node.id] = (left, top, width, h)
+
+    # フォントサイズ（layout で指定されていれば上書き）
+    if "task_font_pt" in layout_opts:
+        layout.task_font_pt = layout_opts["task_font_pt"]
+    if "actor_font_pt" in layout_opts:
+        layout.actor_font_pt = layout_opts["actor_font_pt"]
+    if "label_font_pt" in layout_opts:
+        layout.label_font_pt = layout_opts["label_font_pt"]
 
     return layout

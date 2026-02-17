@@ -1,6 +1,7 @@
 """YAML 業務プロセス定義から編集可能な PPTX を生成する。"""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_CONNECTOR_TYPE, MSO_SHAPE
@@ -14,6 +15,7 @@ from .yaml_loader import (
     load_process_yaml,
     compute_layout,
     EMU_PER_PT,
+    TASK_AREA_LEFT_GAP_EMU,
 )
 
 
@@ -80,7 +82,7 @@ def _draw_actor_labels(slide, layout: ProcessLayout) -> None:
         tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = name
-        p.font.size = Pt(10)
+        p.font.size = Pt(layout.actor_font_pt)
         p.font.bold = True
         p.font.color.rgb = RGBColor(0, 0, 0)  # フォント黒
         p.alignment = PP_ALIGN.CENTER  # 横方向も中央
@@ -135,7 +137,7 @@ def _connection_site_to(from_node, to_node) -> int:
     return CONNECTION_SITE_LEFT  # 左で受ける
 
 
-def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
+def _draw_node_shape(slide, layout: ProcessLayout, node, left: int, top: int, width: int, height: int):
     """タスク・分岐・スタート・ゴール・成果物・サービスの図形を 1 つ描画。"""
     if node.type == "gateway":
         shape_type = MSO_SHAPE.DIAMOND
@@ -181,7 +183,7 @@ def _draw_node_shape(slide, node, left: int, top: int, width: int, height: int):
         p.text = "＋" if node.gateway_type == "parallel" else "✕"
     else:
         p.text = node.label  # task / start / end / artifact / service
-    p.font.size = Pt(10)
+    p.font.size = Pt(layout.task_font_pt)
     p.font.bold = False
     p.font.color.rgb = RGBColor(0, 0, 0)  # 黒文字（DoD: タスク文字の配置）
     shape.fill.solid()
@@ -200,7 +202,8 @@ def yaml_to_pptx(
     YAML ファイルを読み、PPTX レイアウト仕様に従って編集可能な PPTX を生成する。
     戻り値はスライドに追加した図形の総数（タスク・分岐・矢印・レーン線・ラベル含む）。
     """
-    actors, nodes = load_process_yaml(yaml_path)
+    actors, nodes, layout_config = load_process_yaml(yaml_path)
+    margins = layout_config.get("margins") if isinstance(layout_config.get("margins"), dict) else None
     if not actors or not nodes:
         prs = Presentation()
         prs.slide_width = Emu(9144000)
@@ -210,7 +213,7 @@ def yaml_to_pptx(
         prs.save(str(output_path))
         return 0
 
-    layout = compute_layout(actors, nodes)
+    layout = compute_layout(actors, nodes, margins=margins, layout_config=layout_config)
     prs = Presentation()
     prs.slide_width = Emu(layout.slide_width)
     prs.slide_height = Emu(layout.slide_height)
@@ -238,9 +241,35 @@ def yaml_to_pptx(
             if not pos:
                 continue
             left, top, w, h = pos
-            shp = _draw_node_shape(slide, node, left, top, w, h)
+            shp = _draw_node_shape(slide, layout, node, left, top, w, h)
             shape_by_id[node.id] = shp
             total_shapes += 1
+
+        # システム用レーンがあるがサービスノードがこのスライドに無い場合、このスライドのシステムレーンに磁気ディスクを描画する（ページ毎にシステムが表示され矢印が伸ばせるようにする）
+        service_nodes = [n for n in layout.nodes if n.type == "service"]
+        if (
+            layout.actors
+            and layout.actors[-1] == "システム"
+            and service_nodes
+            and not any(n.slide_index == slide_idx for n in service_nodes)
+        ):
+            unique_system_labels = sorted(set(n.label for n in service_nodes))
+            id_by_label = {n.label: n.id for n in service_nodes}
+            system_lane_idx = len(layout.actors) - 1
+            unit = layout.task_side + layout.gap
+            base_left = layout.left_margin + layout.left_label_width + TASK_AREA_LEFT_GAP_EMU
+            # システム磁気ディスクはシステムレーンの一番左（列 0, 1, 2）に配置してはみ出しを防ぐ
+            for i, label in enumerate(unique_system_labels):
+                col = i
+                left = base_left + col * unit
+                top = layout.content_top_offset + system_lane_idx * layout.lane_height + (
+                    layout.lane_height - layout.task_side
+                ) // 2
+                w = h = layout.task_side
+                fake_node = SimpleNamespace(type="service", label=label)
+                shp = _draw_node_shape(slide, layout, fake_node, left, top, w, h)
+                shape_by_id[id_by_label[label]] = shp
+                total_shapes += 1
 
         # このスライド内のエッジのみ矢印で接続（両端が同じスライド）
         for from_id, to_id in layout.edges:
@@ -264,9 +293,19 @@ def yaml_to_pptx(
             conn = slide.shapes.add_connector(
                 connector_type, 0, 0, 0, 0
             )
-            # 接続点: 始点は下レーン同列なら下・それ以外は右、終点は同レーン同列なら上・別列なら左（DoD）
-            site_from = _connection_site_from(from_node, to_node)
-            site_to = _connection_site_to(from_node, to_node)
+            # 接続点: システムレーンへの矢印はタスク下辺・システム上辺。それ以外は従来どおり（右→左 or 同列で上下）
+            system_lane_name = "システム"
+            to_is_system = to_node.actor_index < len(layout.actors) and layout.actors[to_node.actor_index] == system_lane_name
+            from_is_system = from_node.actor_index < len(layout.actors) and layout.actors[from_node.actor_index] == system_lane_name
+            if to_is_system:
+                site_from = CONNECTION_SITE_BOTTOM
+                site_to = CONNECTION_SITE_TOP
+            elif from_is_system:
+                site_from = CONNECTION_SITE_TOP
+                site_to = CONNECTION_SITE_BOTTOM
+            else:
+                site_from = _connection_site_from(from_node, to_node)
+                site_to = _connection_site_to(from_node, to_node)
             conn.begin_connect(from_shp, site_from)
             conn.end_connect(to_shp, site_to)
             conn.line.fill.solid()
@@ -306,52 +345,74 @@ def yaml_to_pptx(
                 tf.word_wrap = False
                 p = tf.paragraphs[0]
                 p.text = edge_label
-                p.font.size = Pt(8)
+                p.font.size = Pt(layout.label_font_pt)
                 p.font.color.rgb = RGBColor(0, 0, 0)
                 p.alignment = PP_ALIGN.CENTER
                 total_shapes += 1
 
-        # システム接続: 点線で人⇔サービス。request=人側○・サービス側矢印下、response=下→上点線（DoD）
+        # システム接続: 点線で人⇔サービス。from（人タスク）がこのスライドにあれば描画し、to（サービス）はこのスライドに描いた磁気ディスクに接続する（ページ毎にシステムを表示）
         for from_id, to_id, role in layout.system_edges:
             from_node = next((n for n in layout.nodes if n.id == from_id), None)
             to_node = next((n for n in layout.nodes if n.id == to_id), None)
             if not from_node or not to_node:
                 continue
-            if from_node.slide_index != slide_idx or to_node.slide_index != slide_idx:
+            if from_node.slide_index != slide_idx:
                 continue
             from_shp = shape_by_id.get(from_id)
             to_shp = shape_by_id.get(to_id)
             if not from_shp or not to_shp:
                 continue
-            same_col = from_node.col_in_slide == to_node.col_in_slide
-            connector_type = MSO_CONNECTOR_TYPE.STRAIGHT if same_col else MSO_CONNECTOR_TYPE.ELBOW
-            conn = slide.shapes.add_connector(connector_type, 0, 0, 0, 0)
+            # タスク⇔システムの矢印は常にエルボー（折れ線）
+            conn = slide.shapes.add_connector(MSO_CONNECTOR_TYPE.ELBOW, 0, 0, 0, 0)
             if role == "request":
-                # 人→サービス: 人側○、サービス側矢印（下向きに接続＝サービスは上辺で受ける）
-                conn.begin_connect(from_shp, CONNECTION_SITE_RIGHT)
+                # DoD: タスクの下辺に矢印を結合、システムの上辺に矢印を結合
+                conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
                 conn.end_connect(to_shp, CONNECTION_SITE_TOP)
                 _set_connector_ends(conn, tail_oval=True, head_arrow=True)
             else:
-                # response: サービス→人、下から上へ。サービス側矢印、人側○（headEnd=始点=サービス、tailEnd=終点=人）
-                conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
-                conn.end_connect(to_shp, CONNECTION_SITE_TOP)
-                ln = conn.line._get_or_add_ln()
-                ln.append(
-                    parse_xml(
-                        '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
-                    )
-                )
-                ln.append(
-                    parse_xml(
-                        '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
-                    )
-                )
+                # DoD: レスポンスもシステム上辺→タスク下辺。サービス側○・タスク側矢印
+                conn.begin_connect(from_shp, CONNECTION_SITE_TOP)
+                conn.end_connect(to_shp, CONNECTION_SITE_BOTTOM)
+                _set_connector_ends(conn, tail_oval=True, head_arrow=True)
             _set_connector_dotted(conn)
             conn.line.fill.solid()
             conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)
             conn.line.width = Pt(1)
             conn.shadow.inherit = False
             total_shapes += 1
+
+            # システム矢印のアクション名ラベル（request_to / response_from の label）
+            sys_label = layout.system_edge_labels.get((from_id, to_id, role))
+            if sys_label:
+                from_pos = layout.node_positions.get(from_id)
+                to_pos = layout.node_positions.get(to_id)
+                if from_pos and to_pos:
+                    fl, ft, fw, fh = from_pos
+                    tl, tt, tw, th = to_pos
+                    fx_c = fl + fw // 2
+                    fy_c = ft + fh // 2
+                    tx_c = tl + tw // 2
+                    ty_c = tt + th // 2
+                    mx = (fx_c + tx_c) // 2
+                    my = (fy_c + ty_c) // 2
+                else:
+                    mx = (from_shp.left + from_shp.width // 2 + to_shp.left + to_shp.width // 2) // 2
+                    my = (from_shp.top + from_shp.height // 2 + to_shp.top + to_shp.height // 2) // 2
+                label_w = 360000
+                label_h = 120000
+                label_left = mx - label_w // 2
+                label_top = my - label_h - 60000
+                tb = slide.shapes.add_textbox(Emu(label_left), Emu(label_top), Emu(label_w), Emu(label_h))
+                tb.shadow.inherit = False
+                tf = tb.text_frame
+                tf.clear()
+                tf.word_wrap = False
+                p = tf.paragraphs[0]
+                p.text = sys_label
+                p.font.size = Pt(layout.label_font_pt)
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                total_shapes += 1
 
     prs.save(str(output_path))
     return total_shapes

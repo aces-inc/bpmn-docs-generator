@@ -8,6 +8,7 @@ from process_to_pptx.yaml_loader import (
     compute_layout,
     find_isolated_flow_nodes,
     SLIDE_MARGIN_MIN_EMU,
+    EMU_PER_PT,
 )
 
 
@@ -37,8 +38,9 @@ nodes:
 def test_load_process_yaml(tmp_path: Path) -> None:
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, layout_config = load_process_yaml(p)
     assert actors == ["お客様", "IT営業"]
+    assert layout_config == {}
     assert len(nodes) == 3
     assert nodes[0].id == 1
     assert nodes[0].type == "task"
@@ -53,7 +55,7 @@ def test_find_isolated_flow_nodes_none(tmp_path: Path) -> None:
     """接続されたフローの場合は孤立ノードなし。"""
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     assert find_isolated_flow_nodes(nodes) == []
 
 
@@ -80,7 +82,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     isolated = find_isolated_flow_nodes(nodes)
     assert isolated == [3]
 
@@ -103,7 +105,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     isolated = find_isolated_flow_nodes(nodes)
     assert isolated == []
 
@@ -132,13 +134,13 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     assert nodes[0].type == "gateway"
     assert nodes[0].gateway_type == "parallel"
     # 省略時は exclusive
     yaml2 = yaml_text.replace("gateway_type: parallel", "")
     p.write_text(yaml2.strip(), encoding="utf-8")
-    _, nodes2 = load_process_yaml(p)
+    _, nodes2, _ = load_process_yaml(p)
     assert nodes2[0].gateway_type == "exclusive"
 
 
@@ -169,7 +171,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     gw = nodes[0]
     assert gw.next_ids == [2, 3]
     assert gw.next_labels == {2: "Yes", 3: "No"}
@@ -201,10 +203,28 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     assert layout.edge_labels.get((1, 2)) == "Yes"
     assert layout.edge_labels.get((1, 3)) == "No"
+
+
+def test_system_lane_actor_detection() -> None:
+    """DR-002: 接頭辞 [システム] または接尾辞 _ でシステム用レーンとみなす。"""
+    from process_to_pptx.yaml_loader import is_system_lane_actor, _collapse_system_lanes
+
+    assert is_system_lane_actor("[システム]") is True
+    assert is_system_lane_actor("[システム]API") is True
+    assert is_system_lane_actor("外部_") is True
+    assert is_system_lane_actor("システム") is False
+    assert is_system_lane_actor("営業") is False
+
+    actors = ["営業", "[システム]API", "CRM_"]
+    new_actors, old_to_new = _collapse_system_lanes(actors)
+    assert new_actors == ["営業", "システム"]
+    assert old_to_new[0] == 0
+    assert old_to_new[1] == 1
+    assert old_to_new[2] == 1
 
 
 def test_load_service_and_system_edges(tmp_path: Path) -> None:
@@ -231,7 +251,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     svc = next(n for n in nodes if n.type == "service")
     assert svc.id == "svc"
     assert svc.label == "API"
@@ -240,6 +260,78 @@ nodes:
     task2 = next(n for n in nodes if n.id == 2)
     assert task2.response_from == ["svc"]
     layout = compute_layout(["人", "システム"], nodes)
+    assert (1, "svc", "request") in layout.system_edges
+    assert ("svc", 2, "response") in layout.system_edges
+
+
+def test_load_request_to_response_from_with_labels(tmp_path: Path) -> None:
+    """request_to / response_from を [{ id, label? }] 形式で読み込み、system_edge_labels に反映される。"""
+    yaml_text = """
+actors: [人, システム]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 依頼
+    next: [2]
+    request_to: [{ id: svc, label: リード登録 }]
+  - id: 2
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+    response_from: [{ id: svc, label: 結果取得 }]
+  - id: svc
+    type: service
+    actor: 1
+    label: API
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes, _ = load_process_yaml(p)
+    task1 = next(n for n in nodes if n.id == 1)
+    assert task1.request_to == ["svc"]
+    assert task1.request_to_labels.get("svc") == "リード登録"
+    task2 = next(n for n in nodes if n.id == 2)
+    assert task2.response_from == ["svc"]
+    assert task2.response_from_labels.get("svc") == "結果取得"
+    layout = compute_layout(["人", "システム"], nodes)
+    assert layout.system_edge_labels.get((1, "svc", "request")) == "リード登録"
+    assert layout.system_edge_labels.get(("svc", 2, "response")) == "結果取得"
+
+
+def test_collapse_system_lanes_in_compute_layout(tmp_path: Path) -> None:
+    """DR-002: 接頭辞 [システム] のアクターが1本の「システム」レーンに集約され、サービスがそのレーンに配置される。"""
+    yaml_text = """
+actors:
+  - 営業
+  - "[システム]API"
+  - "CRM_"
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 依頼
+    next: [2]
+    request_to: [svc]
+  - id: 2
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+    response_from: [svc]
+  - id: svc
+    type: service
+    actor: 1
+    label: API
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    actors, nodes, _ = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    assert layout.actors == ["営業", "システム"], "システム用マークの2アクターが1本の「システム」に集約"
+    svc = next(n for n in nodes if n.type == "service")
+    assert svc.actor_index == 1, "サービスノードは集約後のシステムレーン（index 1）に属する"
     assert (1, "svc", "request") in layout.system_edges
     assert ("svc", 2, "response") in layout.system_edges
 
@@ -267,7 +359,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     assert len(nodes) == 3
     assert nodes[0].type == "start"
     assert nodes[1].type == "task"
@@ -292,7 +384,7 @@ nodes:
 """
     p = tmp_path / "p.yaml"
     p.write_text(yaml_text.strip(), encoding="utf-8")
-    _, nodes = load_process_yaml(p)
+    _, nodes, _ = load_process_yaml(p)
     assert nodes[1].type == "artifact"
     assert nodes[1].label == "見積書"
 
@@ -300,7 +392,7 @@ nodes:
 def test_compute_layout(tmp_path: Path) -> None:
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     assert layout.num_slides >= 1
     assert len(layout.node_positions) == 3
@@ -335,7 +427,7 @@ nodes:
 """
     p = tmp_path / "process.yaml"
     p.write_text(yaml_with_loop.strip(), encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     start_node = next(n for n in nodes if n.type == "start" and n.id == 0)
     assert start_node.column == 0, "開始ノードはループ時も列0に配置される"
@@ -346,13 +438,43 @@ def test_slide_margin_10pt(tmp_path: Path) -> None:
     """スライド左右に 10pt 以上余白がとられる（DoD）。"""
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     assert layout.left_margin >= SLIDE_MARGIN_MIN_EMU
     assert layout.right_margin >= SLIDE_MARGIN_MIN_EMU
     for nid, (left, top, w, h) in layout.node_positions.items():
         assert left >= layout.left_margin
         assert left + w <= layout.slide_width - layout.right_margin
+
+
+def test_layout_margins_from_yaml(tmp_path: Path) -> None:
+    """YAML の layout.margins が compute_layout に反映される。"""
+    yaml_with_margins = """
+layout:
+  margins:
+    left_pt: 20
+    right_pt: 30
+    top_pt: 100
+    bottom_pt: 50
+actors:
+  - A
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: T1
+    next: []
+"""
+    p = tmp_path / "process.yaml"
+    p.write_text(yaml_with_margins, encoding="utf-8")
+    actors, nodes, layout_config = load_process_yaml(p)
+    assert "margins" in layout_config
+    margins = layout_config["margins"]
+    layout = compute_layout(actors, nodes, margins=margins)
+    assert layout.left_margin >= 20 * EMU_PER_PT
+    assert layout.right_margin >= 30 * EMU_PER_PT
+    assert layout.content_top_offset == 100 * EMU_PER_PT
+    assert layout.bottom_margin == 50 * EMU_PER_PT
 
 
 def test_actor_count_scaling() -> None:
@@ -377,7 +499,7 @@ def test_layout_fits_in_slide(tmp_path: Path) -> None:
     """生成レイアウトの図がスライドの描画領域からはみ出さない。"""
     p = tmp_path / "process.yaml"
     p.write_text(SAMPLE_YAML, encoding="utf-8")
-    actors, nodes = load_process_yaml(p)
+    actors, nodes, _ = load_process_yaml(p)
     layout = compute_layout(actors, nodes)
     # 縦: 描画領域下端
     content_bottom = layout.content_top_offset + len(actors) * layout.lane_height
