@@ -51,3 +51,16 @@ Phase 1 完了: Part 2 全 DoD 達成。
 - ブランチ \`feat/margins-config\` を push 後、ブラウザで PR を作成してください。
 - 例: https://github.com/aces-inc/bpmn-docs-generator/compare/feat/margins-config
 - タイトル例: feat: 余白コンフィグ化・システム用スイムレーン（layout.margins + DR-002）
+
+### plan-execute 再開（Part 3 実装・品質ゲート SKIP）
+- Part 1・Part 2 は完了済み。Part 3（システム列の見た目＋矢印ラベル）を実装。
+- [x] DoD Part 3-1: システム列に磁気ディスクでシステム名表示 — 既存実装で対応済み（FLOWCHART_MAGNETIC_DISK）。
+- [x] DoD Part 3-2: request_to / response_from を \`[{ id, label? }]\` に拡張し、矢印にアクション名ラベルを描画（yaml_loader + yaml2pptx + test 追加）。
+- [x] DoD Part 3-3: docs/yaml-schema.md と SKILL.md にラベル付き書き方・書き換え可能である旨を反映。
+Phase 1 完了: Part 3 全 DoD 達成。
+
+### Phase 2: 品質ゲート
+- ユーザー指示により SKIP。
+
+### Phase 3: レビュー
+- 品質ゲート SKIP のため Codex レビューは省略。セルフ確認で問題なし。

@@ -265,9 +265,19 @@ def yaml_to_pptx(
             conn = slide.shapes.add_connector(
                 connector_type, 0, 0, 0, 0
             )
-            # 接続点: 始点は下レーン同列なら下・それ以外は右、終点は同レーン同列なら上・別列なら左（DoD）
-            site_from = _connection_site_from(from_node, to_node)
-            site_to = _connection_site_to(from_node, to_node)
+            # 接続点: システムレーンへの矢印はタスク下辺・システム上辺。それ以外は従来どおり（右→左 or 同列で上下）
+            system_lane_name = "システム"
+            to_is_system = to_node.actor_index < len(layout.actors) and layout.actors[to_node.actor_index] == system_lane_name
+            from_is_system = from_node.actor_index < len(layout.actors) and layout.actors[from_node.actor_index] == system_lane_name
+            if to_is_system:
+                site_from = CONNECTION_SITE_BOTTOM
+                site_to = CONNECTION_SITE_TOP
+            elif from_is_system:
+                site_from = CONNECTION_SITE_TOP
+                site_to = CONNECTION_SITE_BOTTOM
+            else:
+                site_from = _connection_site_from(from_node, to_node)
+                site_to = _connection_site_to(from_node, to_node)
             conn.begin_connect(from_shp, site_from)
             conn.end_connect(to_shp, site_to)
             conn.line.fill.solid()
@@ -343,6 +353,39 @@ def yaml_to_pptx(
             conn.line.width = Pt(1)
             conn.shadow.inherit = False
             total_shapes += 1
+
+            # システム矢印のアクション名ラベル（request_to / response_from の label）
+            sys_label = layout.system_edge_labels.get((from_id, to_id, role))
+            if sys_label:
+                from_pos = layout.node_positions.get(from_id)
+                to_pos = layout.node_positions.get(to_id)
+                if from_pos and to_pos:
+                    fl, ft, fw, fh = from_pos
+                    tl, tt, tw, th = to_pos
+                    fx_c = fl + fw // 2
+                    fy_c = ft + fh // 2
+                    tx_c = tl + tw // 2
+                    ty_c = tt + th // 2
+                    mx = (fx_c + tx_c) // 2
+                    my = (fy_c + ty_c) // 2
+                else:
+                    mx = (from_shp.left + from_shp.width // 2 + to_shp.left + to_shp.width // 2) // 2
+                    my = (from_shp.top + from_shp.height // 2 + to_shp.top + to_shp.height // 2) // 2
+                label_w = 360000
+                label_h = 120000
+                label_left = mx - label_w // 2
+                label_top = my - label_h - 60000
+                tb = slide.shapes.add_textbox(Emu(label_left), Emu(label_top), Emu(label_w), Emu(label_h))
+                tb.shadow.inherit = False
+                tf = tb.text_frame
+                tf.clear()
+                tf.word_wrap = False
+                p = tf.paragraphs[0]
+                p.text = sys_label
+                p.font.size = Pt(8)
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                total_shapes += 1
 
     prs.save(str(output_path))
     return total_shapes

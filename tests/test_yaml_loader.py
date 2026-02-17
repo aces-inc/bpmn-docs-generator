@@ -264,6 +264,42 @@ nodes:
     assert ("svc", 2, "response") in layout.system_edges
 
 
+def test_load_request_to_response_from_with_labels(tmp_path: Path) -> None:
+    """request_to / response_from を [{ id, label? }] 形式で読み込み、system_edge_labels に反映される。"""
+    yaml_text = """
+actors: [人, システム]
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 依頼
+    next: [2]
+    request_to: [{ id: svc, label: リード登録 }]
+  - id: 2
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+    response_from: [{ id: svc, label: 結果取得 }]
+  - id: svc
+    type: service
+    actor: 1
+    label: API
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    _, nodes, _ = load_process_yaml(p)
+    task1 = next(n for n in nodes if n.id == 1)
+    assert task1.request_to == ["svc"]
+    assert task1.request_to_labels.get("svc") == "リード登録"
+    task2 = next(n for n in nodes if n.id == 2)
+    assert task2.response_from == ["svc"]
+    assert task2.response_from_labels.get("svc") == "結果取得"
+    layout = compute_layout(["人", "システム"], nodes)
+    assert layout.system_edge_labels.get((1, "svc", "request")) == "リード登録"
+    assert layout.system_edge_labels.get(("svc", 2, "response")) == "結果取得"
+
+
 def test_collapse_system_lanes_in_compute_layout(tmp_path: Path) -> None:
     """DR-002: 接頭辞 [システム] のアクターが1本の「システム」レーンに集約され、サービスがそのレーンに配置される。"""
     yaml_text = """

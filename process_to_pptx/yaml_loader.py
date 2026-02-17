@@ -78,8 +78,12 @@ class ProcessNode:
     gateway_type: str = "exclusive"
     # システム接続: 人タスクからサービスへのリクエスト先ノード ID のリスト
     request_to: list[str | int] = field(default_factory=list)
+    # システム接続: リクエスト先ごとのラベル（request_to が [{ id, label? }] のとき）
+    request_to_labels: dict[str | int, str] = field(default_factory=dict)
     # システム接続: 人タスクがレスポンスを受け取るサービスノード ID のリスト
     response_from: list[str | int] = field(default_factory=list)
+    # システム接続: レスポンス元ごとのラベル（response_from が [{ id, label? }] のとき）
+    response_from_labels: dict[str | int, str] = field(default_factory=dict)
     # レイアウト後に設定
     column: int = 0
     slide_index: int = 0
@@ -117,6 +121,8 @@ class ProcessLayout:
     edge_labels: dict[tuple[str | int, str | int], str] = field(default_factory=dict)
     # システム接続: (from_id, to_id, "request"|"response")。request=人→サービス、response=サービス→人
     system_edges: list[tuple[str | int, str | int, str]] = field(default_factory=list)
+    # システム接続矢印のラベル: (from_id, to_id, "request"|"response") -> 表示テキスト
+    system_edge_labels: dict[tuple[str | int, str | int, str], str] = field(default_factory=dict)
     num_slides: int = 1
 
     def __post_init__(self) -> None:
@@ -237,11 +243,31 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode], d
             gateway_type = "parallel" if gt == "parallel" else "exclusive"
 
         request_to: list[str | int] = []
-        for rid in item.get("request_to") or []:
-            request_to.append(_normalize_id(rid))
+        request_to_labels: dict[str | int, str] = {}
+        for x in item.get("request_to") or []:
+            if isinstance(x, dict):
+                rid = x.get("id")
+                if rid is not None:
+                    to_id = _normalize_id(rid)
+                    request_to.append(to_id)
+                    lb = x.get("label")
+                    if lb is not None and str(lb).strip():
+                        request_to_labels[to_id] = str(lb).strip()
+            else:
+                request_to.append(_normalize_id(x))
         response_from: list[str | int] = []
-        for rid in item.get("response_from") or []:
-            response_from.append(_normalize_id(rid))
+        response_from_labels: dict[str | int, str] = {}
+        for x in item.get("response_from") or []:
+            if isinstance(x, dict):
+                rid = x.get("id")
+                if rid is not None:
+                    from_id = _normalize_id(rid)
+                    response_from.append(from_id)
+                    lb = x.get("label")
+                    if lb is not None and str(lb).strip():
+                        response_from_labels[from_id] = str(lb).strip()
+            else:
+                response_from.append(_normalize_id(x))
 
         nodes.append(
             ProcessNode(
@@ -253,7 +279,9 @@ def load_process_yaml(path: str | Path) -> tuple[list[str], list[ProcessNode], d
                 next_labels=next_labels,
                 gateway_type=gateway_type,
                 request_to=request_to,
+                request_to_labels=request_to_labels,
                 response_from=response_from,
+                response_from_labels=response_from_labels,
             )
         )
 
@@ -482,14 +510,20 @@ def compute_layout(
                 lbl = node.next_labels.get(to_id)
                 if lbl:
                     layout.edge_labels[(node.id, to_id)] = lbl
-    # システム接続エッジ（request / response）
+    # システム接続エッジ（request / response）と矢印ラベル
     for n in nodes:
         for to_id in n.request_to:
             if to_id in id_to_node:
                 layout.system_edges.append((n.id, to_id, "request"))
+                lbl = n.request_to_labels.get(to_id)
+                if lbl:
+                    layout.system_edge_labels[(n.id, to_id, "request")] = lbl
         for from_id in n.response_from:
             if from_id in id_to_node:
                 layout.system_edges.append((from_id, n.id, "response"))
+                lbl = n.response_from_labels.get(from_id)
+                if lbl:
+                    layout.system_edge_labels[(from_id, n.id, "response")] = lbl
 
     # 各ノードの (left, top, width, height) を EMU で計算（スライド内の座標）
     # アクター枠と最初のタスクの間に 10pt 余白（DoD）
