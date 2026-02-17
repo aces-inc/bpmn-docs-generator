@@ -26,3 +26,19 @@ Phase 1 完了: Part 1 全 DoD 達成（Part 2 は DR-002/003 未決定のため
 ### Phase 4: PR 作成
 - ブランチ \`feat/margins-config\` は \`origin/feat/margins-config\` に push 済み。
 - PR 作成: ブラウザで https://github.com/aces-inc/bpmn-docs-generator/pull/new/feat/margins-config を開き、タイトル「feat: 余白のコンフィグ化（layout.margins）」で PR を作成してください。
+
+### plan-execute 再開（品質ゲート SKIP）
+- Part 1: 全 DoD 達成済み。Part 2: DR-002（P0）未決定のため実装着手不可 → DR 作成して停止。
+
+### plan-execute 再開（Part 2 実装）
+- DR-002 決定済み（接頭辞 `[システム]` / 接尾辞 `_`）のため Part 2 実装を実施。
+- [x] DoD Part 2-1: 接続ルール（タスク下辺・システム上辺）— yaml2pptx.py で request/response の接続点を変更。
+- [x] DoD Part 2-2: システム用レーン指定 — yaml_loader に is_system_lane_actor, _collapse_system_lanes を追加。
+- [x] DoD Part 2-3: システム用レーン内にユニークシステム名を配置 — サービスノードの列を unique label 順で割り当て。
+- [x] DoD Part 2-4: request_to/response_from 矢印接続 — 既存 system_edges で描画、接続点を DoD に合わせて変更済み。
+- [x] DoD Part 2-5: 1レーン集約・レイアウト — テストで検証（test_collapse_system_lanes_in_compute_layout, test_system_lane_actor_detection）。
+- [x] DoD Part 2-6: docs/yaml-schema.md と SKILL.md にシステム用レーン・接続ルールを反映。
+Phase 1 完了: Part 2 全 DoD 達成。
+
+### Phase 2: 品質ゲート
+- .llm/configs/quality-gate.toml 未定義のためスキップ。手動で pytest 37 件通過を確認。

@@ -209,6 +209,24 @@ nodes:
     assert layout.edge_labels.get((1, 3)) == "No"
 
 
+def test_system_lane_actor_detection() -> None:
+    """DR-002: 接頭辞 [システム] または接尾辞 _ でシステム用レーンとみなす。"""
+    from process_to_pptx.yaml_loader import is_system_lane_actor, _collapse_system_lanes
+
+    assert is_system_lane_actor("[システム]") is True
+    assert is_system_lane_actor("[システム]API") is True
+    assert is_system_lane_actor("外部_") is True
+    assert is_system_lane_actor("システム") is False
+    assert is_system_lane_actor("営業") is False
+
+    actors = ["営業", "[システム]API", "CRM_"]
+    new_actors, old_to_new = _collapse_system_lanes(actors)
+    assert new_actors == ["営業", "システム"]
+    assert old_to_new[0] == 0
+    assert old_to_new[1] == 1
+    assert old_to_new[2] == 1
+
+
 def test_load_service_and_system_edges(tmp_path: Path) -> None:
     """type: service と request_to / response_from を読み込み、layout.system_edges に反映される。"""
     yaml_text = """
@@ -242,6 +260,42 @@ nodes:
     task2 = next(n for n in nodes if n.id == 2)
     assert task2.response_from == ["svc"]
     layout = compute_layout(["人", "システム"], nodes)
+    assert (1, "svc", "request") in layout.system_edges
+    assert ("svc", 2, "response") in layout.system_edges
+
+
+def test_collapse_system_lanes_in_compute_layout(tmp_path: Path) -> None:
+    """DR-002: 接頭辞 [システム] のアクターが1本の「システム」レーンに集約され、サービスがそのレーンに配置される。"""
+    yaml_text = """
+actors:
+  - 営業
+  - "[システム]API"
+  - "CRM_"
+nodes:
+  - id: 1
+    type: task
+    actor: 0
+    label: 依頼
+    next: [2]
+    request_to: [svc]
+  - id: 2
+    type: task
+    actor: 0
+    label: 確認
+    next: []
+    response_from: [svc]
+  - id: svc
+    type: service
+    actor: 1
+    label: API
+"""
+    p = tmp_path / "p.yaml"
+    p.write_text(yaml_text.strip(), encoding="utf-8")
+    actors, nodes, _ = load_process_yaml(p)
+    layout = compute_layout(actors, nodes)
+    assert layout.actors == ["営業", "システム"], "システム用マークの2アクターが1本の「システム」に集約"
+    svc = next(n for n in nodes if n.type == "service")
+    assert svc.actor_index == 1, "サービスノードは集約後のシステムレーン（index 1）に属する"
     assert (1, "svc", "request") in layout.system_edges
     assert ("svc", 2, "response") in layout.system_edges
 

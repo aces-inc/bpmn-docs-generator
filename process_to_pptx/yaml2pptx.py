@@ -328,25 +328,15 @@ def yaml_to_pptx(
             connector_type = MSO_CONNECTOR_TYPE.STRAIGHT if same_col else MSO_CONNECTOR_TYPE.ELBOW
             conn = slide.shapes.add_connector(connector_type, 0, 0, 0, 0)
             if role == "request":
-                # 人→サービス: 人側○、サービス側矢印（下向きに接続＝サービスは上辺で受ける）
-                conn.begin_connect(from_shp, CONNECTION_SITE_RIGHT)
+                # DoD: タスクの下辺に矢印を結合、システムの上辺に矢印を結合
+                conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
                 conn.end_connect(to_shp, CONNECTION_SITE_TOP)
                 _set_connector_ends(conn, tail_oval=True, head_arrow=True)
             else:
-                # response: サービス→人、下から上へ。サービス側矢印、人側○（headEnd=始点=サービス、tailEnd=終点=人）
-                conn.begin_connect(from_shp, CONNECTION_SITE_BOTTOM)
-                conn.end_connect(to_shp, CONNECTION_SITE_TOP)
-                ln = conn.line._get_or_add_ln()
-                ln.append(
-                    parse_xml(
-                        '<a:headEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="triangle" w="med" len="med"/>'
-                    )
-                )
-                ln.append(
-                    parse_xml(
-                        '<a:tailEnd xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" type="oval" w="med" len="med"/>'
-                    )
-                )
+                # DoD: レスポンスもシステム上辺→タスク下辺。サービス側○・タスク側矢印
+                conn.begin_connect(from_shp, CONNECTION_SITE_TOP)
+                conn.end_connect(to_shp, CONNECTION_SITE_BOTTOM)
+                _set_connector_ends(conn, tail_oval=True, head_arrow=True)
             _set_connector_dotted(conn)
             conn.line.fill.solid()
             conn.line.fill.fore_color.rgb = RGBColor(0x37, 0x37, 0x37)

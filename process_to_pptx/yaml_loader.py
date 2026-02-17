@@ -21,6 +21,47 @@ SLIDE_MARGIN_MIN_EMU = 10 * EMU_PER_PT
 # アクター枠の右端と最初のタスク列の間の余白（DoD: 10pt）
 TASK_AREA_LEFT_GAP_EMU = 10 * EMU_PER_PT
 
+# DR-002: システム用レーンとみなすアクターのマーク。接頭辞または接尾辞 "_"
+SYSTEM_LANE_PREFIX = "[システム]"
+SYSTEM_LANE_SUFFIX = "_"
+
+
+def is_system_lane_actor(actor_name: str) -> bool:
+    """アクター名がシステム用レーンとみなすマーク（接頭辞 or 接尾辞 _）を持つか。"""
+    if not actor_name or not isinstance(actor_name, str):
+        return False
+    s = actor_name.strip()
+    return s.startswith(SYSTEM_LANE_PREFIX) or s.rstrip().endswith(SYSTEM_LANE_SUFFIX)
+
+
+def _collapse_system_lanes(actors: list[str]) -> tuple[list[str], dict[int, int]]:
+    """
+    システム用マークの付いたアクターを1本の「システム」レーンに集約する。
+    戻り値: (new_actors, old_index -> new_index)。システム用がいなければ actors をそのまま返す。
+    """
+    if not actors:
+        return [], {}
+    system_indices = {i for i, a in enumerate(actors) if is_system_lane_actor(a)}
+    if not system_indices:
+        return actors, {i: i for i in range(len(actors))}
+    non_system = [a for i, a in enumerate(actors) if i not in system_indices]
+    new_actors = non_system + ["システム"]
+    old_to_new: dict[int, int] = {}
+    system_new_idx = len(new_actors) - 1
+    for old_idx in range(len(actors)):
+        if old_idx in system_indices:
+            old_to_new[old_idx] = system_new_idx
+        else:
+            name = actors[old_idx]
+            # 非システムは new_actors 内の同じ名前の最初の出現位置（順序保持）
+            for ni, na in enumerate(new_actors):
+                if na == name:
+                    old_to_new[old_idx] = ni
+                    break
+            else:
+                old_to_new[old_idx] = system_new_idx
+    return new_actors, old_to_new
+
 
 @dataclass
 class ProcessNode:
@@ -350,7 +391,12 @@ def compute_layout(
     ノードは列に割り当て、max_cols を超えたら次スライド。
     margins: YAML の layout.margins（left_pt, right_pt, top_pt, bottom_pt 等）。未指定時は現行どおり。
     """
-    layout = ProcessLayout(actors=actors, nodes=nodes)
+    # DR-002: システム用マークのアクターを1本のレーンに集約
+    collapsed_actors, old_to_new = _collapse_system_lanes(actors)
+    for node in nodes:
+        node.actor_index = old_to_new.get(node.actor_index, node.actor_index)
+
+    layout = ProcessLayout(actors=collapsed_actors, nodes=nodes)
     layout.content_top_offset = int(layout.slide_height * 0.25)
     layout.bottom_margin = int(0.05 * layout.slide_height)
 
@@ -381,6 +427,14 @@ def compute_layout(
             if from_id in id_to_node:
                 extra_edges.append((from_id, n.id))
     _assign_columns(nodes, id_to_node, extra_edges)
+
+    # システム用レーン内: type: service のノードはユニークな label 順に列を並べる（DoD）
+    max_col = max((n.column for n in nodes if n.column >= 0), default=-1)
+    unique_system_labels = sorted(set(n.label for n in nodes if n.type == "service"))
+    for node in nodes:
+        if node.type == "service" and unique_system_labels:
+            idx = unique_system_labels.index(node.label)
+            node.column = max_col + 1 + idx
 
     # 仮の max_cols_per_slide でスライド・列を割り当て
     unit = layout.task_side + layout.gap
