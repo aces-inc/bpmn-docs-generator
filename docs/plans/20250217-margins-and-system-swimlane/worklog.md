@@ -46,3 +46,8 @@ Phase 1 完了: Part 2 全 DoD 達成。
 
 ### Phase 3: レビュー
 - セルフ確認: 接続ルール・システムレーン集約・ドキュメント整合。修正不要と判断。
+
+### Phase 4: PR 作成
+- ブランチ \`feat/margins-config\` を push 後、ブラウザで PR を作成してください。
+- 例: https://github.com/aces-inc/bpmn-docs-generator/compare/feat/margins-config
+- タイトル例: feat: 余白コンフィグ化・システム用スイムレーン（layout.margins + DR-002）
